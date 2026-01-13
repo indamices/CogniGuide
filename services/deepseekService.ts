@@ -228,11 +228,12 @@
 	    ];
 	  }
 	  // 6. 构建最终 API 请求参数
+	  // 注意：移除 response_format，因为 DeepSeek API 可能不支持 OpenAI 的此参数
+	  // 依赖系统提示词要求 JSON 输出格式
 	  const payload = {
 	    model: apiModelName,
 	    messages: messagesPayload,
 	    stream: false,
-	    response_format: { type: 'json_object' },
 	    temperature: 0.3,
 	    max_tokens: 2000
 	  };
@@ -303,25 +304,36 @@
 	    }
 	    // 12. 数据结构修正
 	    if (parsed.updatedConcepts && parsed.updatedConcepts.length > 0) {
-	      // 确保 mastery 值合法
-	      const validMasteryLevels: MasteryLevel[] = ["Unknown", "Novice", "Competent", "Expert"];
+	      // 确保 mastery 值合法 - 使用枚举值
+	      const validMasteryLevels: MasteryLevel[] = [
+	        MasteryLevel.Unknown,
+	        MasteryLevel.Novice,
+	        MasteryLevel.Competent,
+	        MasteryLevel.Expert
+	      ];
 	      parsed.updatedConcepts = parsed.updatedConcepts.map(concept => ({
 	        ...concept,
 	        mastery: validMasteryLevels.includes(concept.mastery as MasteryLevel)
 	          ? concept.mastery
-	          : "Unknown"
+	          : MasteryLevel.Unknown
 	      }));
 	    }
-	    // 确保 detectedStage 合法
-	    const validStages: TeachingStage[] = ["Introduction", "Construction", "Consolidation", "Transfer", "Reflection"];
+	    // 确保 detectedStage 合法 - 使用枚举值
+	    const validStages: TeachingStage[] = [
+	        TeachingStage.Introduction,
+	        TeachingStage.Construction,
+	        TeachingStage.Consolidation,
+	        TeachingStage.Transfer,
+	        TeachingStage.Reflection
+	      ];
 	    if (!validStages.includes(parsed.detectedStage as TeachingStage)) {
 	      const lastUserMessage = cleanHistory[cleanHistory.length - 1]?.content || '';
 	      if (lastUserMessage.includes('什么是') || lastUserMessage.includes('介绍一下')) {
-	        parsed.detectedStage = "Introduction";
+	        parsed.detectedStage = TeachingStage.Introduction;
 	      } else if (lastUserMessage.includes('为什么') || lastUserMessage.includes('怎么')) {
-	        parsed.detectedStage = "Construction";
+	        parsed.detectedStage = TeachingStage.Construction;
 	      } else {
-	        parsed.detectedStage = "Consolidation";
+	        parsed.detectedStage = TeachingStage.Consolidation;
 	      }
 	    }
 	    return parsed;
@@ -331,7 +343,7 @@
 	    const fallbackResponse: TutorResponse = {
 	      conversationalReply: "抱歉，系统暂时遇到了一些问题。让我们重新开始这个话题吧。",
 	      internalThought: `错误: ${error instanceof Error ? error.message : String(error)}`,
-	      detectedStage: "Introduction",
+	      detectedStage: TeachingStage.Introduction,
 	      updatedConcepts: currentConcepts,
 	      updatedLinks: currentLinks,
 	      appliedStrategy: "Lecture",

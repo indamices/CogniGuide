@@ -54,13 +54,14 @@ const KnowledgeMap: React.FC<KnowledgeMapProps> = ({ nodes, links }) => {
     const buildHierarchy = (id: string, visited: Set<string>): any => {
         const node = nodes.find(n => n.id === id);
         // Fallback for virtual root children that might be real nodes
-        if (!node && id !== 'virtual_root') return null; 
+        if (!node && id !== 'virtual_root') return null;
 
         visited.add(id);
         const childrenIds = adjacency[id] || [];
+        // 修复：直接传递同一个 Set，而不是创建新的 Set，以便正确检测循环
         const children = childrenIds
             .filter(childId => !visited.has(childId))
-            .map(childId => buildHierarchy(childId, new Set(visited)))
+            .map(childId => buildHierarchy(childId, visited))
             .filter(Boolean); // Remove nulls
 
         return {

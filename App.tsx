@@ -5,9 +5,25 @@ import HistorySidebar from './components/HistorySidebar';
 import { ChatMessage, MessageRole, LearningState, ConceptNode, ConceptLink, SavedSession, TeachingMode, TeachingStage, TutorResponse } from './types';
 import { sendMessageToTutor } from './services/geminiService';
 import { sendMessageToDeepSeek } from './services/deepseekService';
+import safeStorage from './utils/storage';
+
+// 修复：确保 process.env 可用（仅在客户端/构建时）
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      [key: string]: string | undefined;
+    }
+  }
+  interface Process {
+    env: NodeJS.ProcessEnv;
+  }
+}
 
 // Define Application Version
 const APP_VERSION = 'v1.0.6';
+
+// 修复：生成唯一 ID 的辅助函数，避免快速操作时 ID 冲突
+const generateUniqueId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>('');
@@ -39,20 +55,22 @@ const App: React.FC = () => {
 
   // --- Initial Load ---
   useEffect(() => {
-    if (process.env.API_KEY) {
-      setApiKey(process.env.API_KEY);
+    // 修复：验证 API Key 不为空
+    const apiKey = process.env.API_KEY as string | undefined;
+    if (apiKey && apiKey.trim().length > 0) {
+      setApiKey(apiKey);
       setHasKey(true);
     }
 
-    const storedDSKey = localStorage.getItem('deepseek_api_key');
+    // 修复：安全访问 localStorage
+    const storedDSKey = safeStorage.getItem('deepseek_api_key');
     if (storedDSKey) {
         setDeepSeekKey(storedDSKey);
     }
     
     // Load sessions
-    const storedSessions = localStorage.getItem('cogniguide_sessions');
     let parsedSessions: SavedSession[] = [];
-    
+    const storedSessions = safeStorage.getItem('cogniguide_sessions');
     if (storedSessions) {
       try {
         parsedSessions = JSON.parse(storedSessions);
@@ -63,7 +81,7 @@ const App: React.FC = () => {
     }
 
     // Restore last active
-    const lastActiveId = localStorage.getItem('cogniguide_last_active_id');
+    let lastActiveId = safeStorage.getItem('cogniguide_last_active_id');
     if (lastActiveId && parsedSessions.length > 0) {
       const session = parsedSessions.find(s => s.id === lastActiveId);
       if (session) {
@@ -81,9 +99,9 @@ const App: React.FC = () => {
   // --- Auto-Save Last Active ID ---
   useEffect(() => {
     if (currentSessionId) {
-      localStorage.setItem('cogniguide_last_active_id', currentSessionId);
+      safeStorage.setItem('cogniguide_last_active_id', currentSessionId);
     } else {
-      localStorage.removeItem('cogniguide_last_active_id');
+      safeStorage.removeItem('cogniguide_last_active_id');
     }
   }, [currentSessionId]);
 
@@ -108,14 +126,14 @@ const App: React.FC = () => {
 
       const newSessions = [...prevSessions];
       newSessions[index] = updatedSession;
-      localStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+      safeStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
       return newSessions;
     });
   }, [messages, learningState, topic, sessionTitle, model, teachingMode, currentSessionId]);
 
   const saveDeepSeekKey = (key: string) => {
       setDeepSeekKey(key);
-      localStorage.setItem('deepseek_api_key', key);
+      safeStorage.setItem('deepseek_api_key', key);
   }
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
@@ -124,7 +142,7 @@ const App: React.FC = () => {
 
     const newSessions = sessions.filter(s => s.id !== id);
     setSessions(newSessions);
-    localStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+    safeStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
 
     if (currentSessionId === id) {
       handleNewChat();
@@ -132,11 +150,11 @@ const App: React.FC = () => {
   };
 
   const updateSessionTitle = (id: string, newTitle: string) => {
-    const newSessions = sessions.map(s => 
+    const newSessions = sessions.map(s =>
       s.id === id ? { ...s, title: newTitle, lastModified: Date.now() } : s
     );
     setSessions(newSessions);
-    localStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+    safeStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
     
     if (currentSessionId === id) {
       setSessionTitle(newTitle);
@@ -154,8 +172,9 @@ const App: React.FC = () => {
     setLearningState(session.learningState);
     setModel(session.model || 'gemini-2.5-flash');
     setTeachingMode(session.teachingMode || TeachingMode.Auto);
-    
-    if (window.innerWidth < 768) {
+
+    // 修复：添加 window 对象检查
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
         setIsSidebarOpen(false);
     }
   };
@@ -176,13 +195,13 @@ const App: React.FC = () => {
       summary: []
     });
     setTeachingMode(TeachingMode.Auto);
-    localStorage.removeItem('cogniguide_last_active_id');
+    safeStorage.removeItem('cogniguide_last_active_id');
   };
 
   const startNewTopic = async (newTopic: string) => {
-    const newId = Date.now().toString();
+    const newId = generateUniqueId();
     const initialMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: generateUniqueId(),
       role: MessageRole.User,
       content: `我想学习关于 ${newTopic} 的内容。`,
       timestamp: Date.now()
@@ -207,22 +226,22 @@ const App: React.FC = () => {
       lastModified: Date.now()
     };
 
-    setSessions(prev => [newSession, ...prev]); 
+    setSessions(prev => [newSession, ...prev]);
     setCurrentSessionId(newId);
     setTopic(newTopic);
     setSessionTitle(newTopic);
     setMessages([initialMessage]);
     setLearningState(newSession.learningState);
-    
-    localStorage.setItem('cogniguide_sessions', JSON.stringify([newSession, ...sessions]));
-    localStorage.setItem('cogniguide_last_active_id', newId);
+
+    safeStorage.setItem('cogniguide_sessions', JSON.stringify([newSession, ...sessions]));
+    safeStorage.setItem('cogniguide_last_active_id', newId);
 
     await processMessage(initialMessage, [], model, newSession.learningState, teachingMode);
   };
 
   const processMessage = async (
-    userMsg: ChatMessage, 
-    history: ChatMessage[], 
+    userMsg: ChatMessage,
+    history: ChatMessage[],
     currentModel: string,
     currentLearningState: LearningState,
     currentMode: TeachingMode
@@ -231,10 +250,12 @@ const App: React.FC = () => {
 
     try {
       const fullHistory = [...history, userMsg];
-      
+
       let response: TutorResponse;
-      
-      if (currentModel.startsWith('V3.2')) {
+
+      // 修复：使用明确的模型列表检查
+      const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
+      if (DEEPSEEK_MODELS.includes(currentModel)) {
           if (!deepSeekKey) {
               throw new Error("请先设置 DeepSeek API Key");
           }
@@ -262,7 +283,7 @@ const App: React.FC = () => {
       }
 
       const aiMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: generateUniqueId(),
         role: MessageRole.Model,
         content: response.conversationalReply || "（知识库已更新，请查看右侧笔记）", // Robust Fallback
         timestamp: Date.now()
@@ -272,27 +293,37 @@ const App: React.FC = () => {
       
       // Update Learning State
       setLearningState(prev => {
-        // Merge Concepts
-        const mergedConcepts = [...prev.concepts];
-        response.updatedConcepts.forEach(newC => {
-            const index = mergedConcepts.findIndex(c => c.id === newC.id);
-            if (index >= 0) {
-                mergedConcepts[index] = newC; 
-            } else {
-                mergedConcepts.push(newC); 
-            }
-        });
+        // Merge Concepts - 修复：如果 AI 返回的概念列表为空，保留现有概念
+        const mergedConcepts = response.updatedConcepts && response.updatedConcepts.length > 0
+          ? response.updatedConcepts.map(newC => {
+              // 尝试在现有概念中找到匹配的，保留其 mastery 等信息
+              const existing = prev.concepts.find(c => c.id === newC.id);
+              if (existing) {
+                // 合并：使用新数据，但如果新数据不完整，保留旧数据
+                return {
+                  ...existing,
+                  ...newC,
+                  // 确保关键字段不为空
+                  name: newC.name || existing.name,
+                  mastery: newC.mastery || existing.mastery,
+                  description: newC.description || existing.description
+                };
+              }
+              return newC;
+            })
+          : prev.concepts; // AI 没有返回概念，保持不变
 
-        // Merge Links - Ensure we don't have duplicates
-        const mergedLinks = [...prev.links];
-        response.updatedLinks.forEach(newL => {
-            const exists = mergedLinks.some(l => 
-                (l.source === newL.source && l.target === newL.target)
-            );
-            if (!exists) {
-                mergedLinks.push(newL);
-            }
-        });
+        // Merge Links - 修复：如果 AI 返回的链接列表为空，保留现有链接
+        const mergedLinks = response.updatedLinks && response.updatedLinks.length > 0
+          ? response.updatedLinks.filter(newL => {
+              // 检查是否已存在相同的链接（双向检查）
+              const exists = prev.links.some(l =>
+                (l.source === newL.source && l.target === newL.target) ||
+                (l.source === newL.target && l.target === newL.source)
+              );
+              return !exists;
+            })
+          : prev.links; // AI 没有返回链接，保持不变
         
         // Merge Summary - Support multiple fragments
         const newSummary = [...prev.summary];
@@ -318,9 +349,9 @@ const App: React.FC = () => {
       if (error.message && error.message.includes("429")) {
           errorMessage = "思考过载 (429)。请稍后重试或切换轻量模型。";
       }
-      
+
       const errorMsg: ChatMessage = {
-        id: Date.now().toString(),
+        id: generateUniqueId(),
         role: MessageRole.Model,
         content: errorMessage,
         timestamp: Date.now()
@@ -333,7 +364,7 @@ const App: React.FC = () => {
 
   const handleSendMessage = (text: string) => {
     const userMsg: ChatMessage = {
-      id: Date.now().toString(),
+      id: generateUniqueId(),
       role: MessageRole.User,
       content: text,
       timestamp: Date.now()

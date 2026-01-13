@@ -83,7 +83,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           <button
             onClick={() => {
               onNewChat();
-              if (window.innerWidth < 768) onClose();
+              if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
             }}
             className="w-full flex items-center justify-center space-x-2 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-sm transition-colors font-medium"
           >
@@ -106,7 +106,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                 key={session.id}
                 onClick={() => {
                   onSelectSession(session.id);
-                  if (window.innerWidth < 768) onClose();
+                  if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
                 }}
                 className={`
                   group relative flex items-center p-3 rounded-lg cursor-pointer transition-all border border-transparent
