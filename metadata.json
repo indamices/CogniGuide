@@ -1,0 +1,6 @@
+{
+  "name": "CogniGuide: Socratic Learning Partner",
+  "description": "A personalized, cognitive-oriented learning companion that uses Socratic questioning, knowledge mapping, and adaptive strategies to guide users to mastery rather than just providing answers.",
+  "version": "1.0.6",
+  "requestFramePermissions": []
+}

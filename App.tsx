@@ -1,0 +1,538 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import ChatArea from './components/ChatArea';
+import Dashboard from './components/Dashboard';
+import HistorySidebar from './components/HistorySidebar';
+import { ChatMessage, MessageRole, LearningState, ConceptNode, ConceptLink, SavedSession, TeachingMode, TeachingStage, TutorResponse } from './types';
+import { sendMessageToTutor } from './services/geminiService';
+import { sendMessageToDeepSeek } from './services/deepseekService';
+
+// Define Application Version
+const APP_VERSION = 'v1.0.6';
+
+const App: React.FC = () => {
+  const [apiKey, setApiKey] = useState<string>('');
+  const [deepSeekKey, setDeepSeekKey] = useState<string>('');
+  const [hasKey, setHasKey] = useState<boolean>(false);
+  
+  // Session State
+  const [sessions, setSessions] = useState<SavedSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default open on desktop
+  
+  // Current Active State
+  const [topic, setTopic] = useState<string>('');
+  const [sessionTitle, setSessionTitle] = useState<string>('');
+  const [model, setModel] = useState<string>('gemini-2.5-flash');
+  const [teachingMode, setTeachingMode] = useState<TeachingMode>(TeachingMode.Auto); // New: Teaching Mode
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  
+  const [learningState, setLearningState] = useState<LearningState>({
+    concepts: [],
+    links: [],
+    currentStrategy: '等待主题...',
+    currentStage: TeachingStage.Introduction,
+    cognitiveLoad: 'Optimal',
+    feedback: '',
+    summary: []
+  });
+
+  // --- Initial Load ---
+  useEffect(() => {
+    if (process.env.API_KEY) {
+      setApiKey(process.env.API_KEY);
+      setHasKey(true);
+    }
+
+    const storedDSKey = localStorage.getItem('deepseek_api_key');
+    if (storedDSKey) {
+        setDeepSeekKey(storedDSKey);
+    }
+    
+    // Load sessions
+    const storedSessions = localStorage.getItem('cogniguide_sessions');
+    let parsedSessions: SavedSession[] = [];
+    
+    if (storedSessions) {
+      try {
+        parsedSessions = JSON.parse(storedSessions);
+        setSessions(parsedSessions);
+      } catch (e) {
+        console.error("Failed to parse sessions", e);
+      }
+    }
+
+    // Restore last active
+    const lastActiveId = localStorage.getItem('cogniguide_last_active_id');
+    if (lastActiveId && parsedSessions.length > 0) {
+      const session = parsedSessions.find(s => s.id === lastActiveId);
+      if (session) {
+        setCurrentSessionId(session.id);
+        setTopic(session.topic);
+        setSessionTitle(session.title);
+        setMessages(session.messages);
+        setLearningState(session.learningState);
+        setModel(session.model || 'gemini-2.5-flash');
+        setTeachingMode(session.teachingMode || TeachingMode.Auto);
+      }
+    }
+  }, []);
+
+  // --- Auto-Save Last Active ID ---
+  useEffect(() => {
+    if (currentSessionId) {
+      localStorage.setItem('cogniguide_last_active_id', currentSessionId);
+    } else {
+      localStorage.removeItem('cogniguide_last_active_id');
+    }
+  }, [currentSessionId]);
+
+  // --- Auto-Save Session ---
+  useEffect(() => {
+    if (!currentSessionId) return;
+
+    setSessions(prevSessions => {
+      const index = prevSessions.findIndex(s => s.id === currentSessionId);
+      if (index === -1) return prevSessions;
+
+      const updatedSession: SavedSession = {
+        ...prevSessions[index],
+        title: sessionTitle || prevSessions[index].title,
+        topic: topic,
+        messages: messages,
+        learningState: learningState,
+        model: model,
+        teachingMode: teachingMode,
+        lastModified: Date.now()
+      };
+
+      const newSessions = [...prevSessions];
+      newSessions[index] = updatedSession;
+      localStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+      return newSessions;
+    });
+  }, [messages, learningState, topic, sessionTitle, model, teachingMode, currentSessionId]);
+
+  const saveDeepSeekKey = (key: string) => {
+      setDeepSeekKey(key);
+      localStorage.setItem('deepseek_api_key', key);
+  }
+
+  const deleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm("确定要删除这个对话吗？")) return;
+
+    const newSessions = sessions.filter(s => s.id !== id);
+    setSessions(newSessions);
+    localStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+
+    if (currentSessionId === id) {
+      handleNewChat();
+    }
+  };
+
+  const updateSessionTitle = (id: string, newTitle: string) => {
+    const newSessions = sessions.map(s => 
+      s.id === id ? { ...s, title: newTitle, lastModified: Date.now() } : s
+    );
+    setSessions(newSessions);
+    localStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+    
+    if (currentSessionId === id) {
+      setSessionTitle(newTitle);
+    }
+  };
+
+  const loadSession = (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (!session) return;
+
+    setCurrentSessionId(id);
+    setTopic(session.topic);
+    setSessionTitle(session.title);
+    setMessages(session.messages);
+    setLearningState(session.learningState);
+    setModel(session.model || 'gemini-2.5-flash');
+    setTeachingMode(session.teachingMode || TeachingMode.Auto);
+    
+    if (window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    if (!currentSessionId && !topic) return;
+    setCurrentSessionId(null);
+    setTopic('');
+    setSessionTitle('');
+    setMessages([]);
+    setLearningState({
+      concepts: [],
+      links: [],
+      currentStrategy: '等待主题...',
+      currentStage: TeachingStage.Introduction,
+      cognitiveLoad: 'Optimal',
+      feedback: '',
+      summary: []
+    });
+    setTeachingMode(TeachingMode.Auto);
+    localStorage.removeItem('cogniguide_last_active_id');
+  };
+
+  const startNewTopic = async (newTopic: string) => {
+    const newId = Date.now().toString();
+    const initialMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: MessageRole.User,
+      content: `我想学习关于 ${newTopic} 的内容。`,
+      timestamp: Date.now()
+    };
+
+    const newSession: SavedSession = {
+      id: newId,
+      title: newTopic, 
+      topic: newTopic,
+      messages: [initialMessage],
+      learningState: {
+        concepts: [],
+        links: [],
+        currentStrategy: '初始化认知模型...',
+        currentStage: TeachingStage.Introduction,
+        cognitiveLoad: 'Optimal',
+        feedback: '',
+        summary: []
+      },
+      model: model,
+      teachingMode: teachingMode,
+      lastModified: Date.now()
+    };
+
+    setSessions(prev => [newSession, ...prev]); 
+    setCurrentSessionId(newId);
+    setTopic(newTopic);
+    setSessionTitle(newTopic);
+    setMessages([initialMessage]);
+    setLearningState(newSession.learningState);
+    
+    localStorage.setItem('cogniguide_sessions', JSON.stringify([newSession, ...sessions]));
+    localStorage.setItem('cogniguide_last_active_id', newId);
+
+    await processMessage(initialMessage, [], model, newSession.learningState, teachingMode);
+  };
+
+  const processMessage = async (
+    userMsg: ChatMessage, 
+    history: ChatMessage[], 
+    currentModel: string,
+    currentLearningState: LearningState,
+    currentMode: TeachingMode
+  ) => {
+    setIsLoading(true);
+
+    try {
+      const fullHistory = [...history, userMsg];
+      
+      let response: TutorResponse;
+      
+      if (currentModel.startsWith('V3.2')) {
+          if (!deepSeekKey) {
+              throw new Error("请先设置 DeepSeek API Key");
+          }
+          response = await sendMessageToDeepSeek(
+            fullHistory,
+            currentLearningState.concepts,
+            currentLearningState.links,
+            currentLearningState.summary,
+            deepSeekKey,
+            currentModel,
+            currentMode
+          );
+      } else {
+          // Gemini models
+          if (!apiKey) throw new Error("API Key Missing");
+          response = await sendMessageToTutor(
+            fullHistory,
+            currentLearningState.concepts,
+            currentLearningState.links,
+            currentLearningState.summary,
+            apiKey,
+            currentModel,
+            currentMode 
+          );
+      }
+
+      const aiMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: MessageRole.Model,
+        content: response.conversationalReply || "（知识库已更新，请查看右侧笔记）", // Robust Fallback
+        timestamp: Date.now()
+      };
+
+      setMessages(prev => [...prev, aiMsg]);
+      
+      // Update Learning State
+      setLearningState(prev => {
+        // Merge Concepts
+        const mergedConcepts = [...prev.concepts];
+        response.updatedConcepts.forEach(newC => {
+            const index = mergedConcepts.findIndex(c => c.id === newC.id);
+            if (index >= 0) {
+                mergedConcepts[index] = newC; 
+            } else {
+                mergedConcepts.push(newC); 
+            }
+        });
+
+        // Merge Links - Ensure we don't have duplicates
+        const mergedLinks = [...prev.links];
+        response.updatedLinks.forEach(newL => {
+            const exists = mergedLinks.some(l => 
+                (l.source === newL.source && l.target === newL.target)
+            );
+            if (!exists) {
+                mergedLinks.push(newL);
+            }
+        });
+        
+        // Merge Summary - Support multiple fragments
+        const newSummary = [...prev.summary];
+        if (response.summaryFragments && response.summaryFragments.length > 0) {
+            newSummary.push(...response.summaryFragments);
+        }
+
+        return {
+            concepts: mergedConcepts,
+            links: mergedLinks,
+            currentStrategy: response.appliedStrategy,
+            currentStage: response.detectedStage || prev.currentStage,
+            cognitiveLoad: response.cognitiveLoadEstimate,
+            feedback: response.internalThought,
+            summary: newSummary
+        };
+      });
+
+    } catch (error: any) {
+      console.error(error);
+      let errorMessage = "认知引擎连接异常。";
+      if (error.message) errorMessage = error.message;
+      if (error.message && error.message.includes("429")) {
+          errorMessage = "思考过载 (429)。请稍后重试或切换轻量模型。";
+      }
+      
+      const errorMsg: ChatMessage = {
+        id: Date.now().toString(),
+        role: MessageRole.Model,
+        content: errorMessage,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendMessage = (text: string) => {
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: MessageRole.User,
+      content: text,
+      timestamp: Date.now()
+    };
+    setMessages(prev => [...prev, userMsg]);
+    processMessage(userMsg, messages, model, learningState, teachingMode);
+  };
+
+  const exportToClipboard = useCallback(async () => {
+    // 0. Defensive Check
+    if (!messages || messages.length === 0) {
+        alert("暂无对话记录可导出。");
+        return;
+    }
+
+    // 1. Chat Transcript
+    const chatSection = messages.map(m => {
+        const role = m.role === MessageRole.User ? '👤 用户' : '🤖 CogniGuide';
+        return `### ${role}:\n${m.content}`;
+    }).join('\n\n');
+
+    // 2. Learning Notes (Defensive)
+    const notes = learningState.summary || [];
+    const notesSection = notes.length > 0 
+        ? notes.map(n => `- ${n}`).join('\n') 
+        : "(暂无笔记)";
+
+    // 3. Knowledge Graph (Defensive)
+    const concepts = learningState.concepts || [];
+    const links = learningState.links || [];
+    
+    const mapSection = concepts.length > 0
+        ? concepts.map(c => {
+            const children = links
+                .filter(l => l.source === c.id)
+                .map(l => {
+                    const targetNode = concepts.find(n => n.id === l.target);
+                    const targetName = targetNode ? targetNode.name : l.target;
+                    return `  - [${l.relationship}] -> ${targetName}`;
+                }).join('\n');
+            const masteryIcon = c.mastery === 'Expert' ? '🟢' : c.mastery === 'Competent' ? '🔵' : '🟠';
+            return `- ${masteryIcon} **${c.name}**\n  > ${c.description || '无定义'}\n${children}`;
+          }).join('\n')
+        : "(暂无结构)";
+
+    const timestamp = new Date().toLocaleString();
+    const currentTopic = sessionTitle || topic || '未命名会话';
+
+    const fullContent = `# CogniGuide 学习导出
+**主题**: ${currentTopic}
+**时间**: ${timestamp}
+**模式**: ${teachingMode}
+
+---
+
+## 1. 对话实录 (Transcript)
+${chatSection}
+
+---
+
+## 2. 学习笔记 (Notes)
+${notesSection}
+
+---
+
+## 3. 知识图谱 (Knowledge Graph)
+${mapSection}
+`;
+
+    // Robust Copy Implementation
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(fullContent);
+            alert("✅ 已复制到剪贴板！\n(Markdown 格式，可直接粘贴至 Notion/Obsidian)");
+        } else {
+            throw new Error("Clipboard API unavailable");
+        }
+    } catch (err) {
+        console.warn("Standard copy failed, using fallback", err);
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = fullContent;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            textArea.setAttribute("readonly", "");
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) {
+                alert("✅ 已复制 (兼容模式)！");
+            } else {
+                throw new Error("Fallback failed");
+            }
+        } catch (finalErr) {
+            console.error("All copy methods failed", finalErr);
+            alert("❌ 复制失败，请检查浏览器权限。");
+        }
+    }
+  }, [messages, learningState, sessionTitle, topic, teachingMode]);
+
+  // Render Key Input Screen
+  if (!hasKey) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+            <div className="w-12 h-12 bg-indigo-600 rounded-xl mx-auto mb-4 flex items-center justify-center shadow-lg">
+                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-800 mb-2">CogniGuide {APP_VERSION}</h1>
+            <p className="text-slate-500 mb-6 text-sm">动态自适应 · 认知导向 · 终身学习</p>
+            <div className="space-y-4 text-left">
+                <input 
+                    type="password" 
+                    placeholder="输入 Google Gemini API Key"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                />
+                <button 
+                    onClick={() => { if(apiKey.length > 5) setHasKey(true); }}
+                    className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold transition-colors shadow-md"
+                >
+                    进入学习空间
+                </button>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen bg-slate-50 flex overflow-hidden">
+      <HistorySidebar 
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSelectSession={loadSession}
+        onDeleteSession={deleteSession}
+        onRenameSession={updateSessionTitle}
+        onNewChat={handleNewChat}
+        version={APP_VERSION}
+      />
+
+      <div className="flex-1 flex flex-col md:flex-row min-w-0">
+        <div className="flex-1 h-full p-0 md:p-4 lg:p-6 flex flex-col max-w-4xl mx-auto w-full min-w-0 relative">
+          
+          {/* DeepSeek Key Warning/Input Overlay if selected but missing */}
+          {model.startsWith('V3.2') && !deepSeekKey && (
+              <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
+                  <span className="text-xs text-amber-800 font-medium flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    使用 DeepSeek 需配置 Key
+                  </span>
+                  <div className="flex gap-2">
+                    <input 
+                        type="password" 
+                        placeholder="sk-..." 
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        onChange={(e) => saveDeepSeekKey(e.target.value)}
+                        value={deepSeekKey}
+                    />
+                  </div>
+              </div>
+          )}
+
+          <ChatArea 
+              messages={messages} 
+              onSendMessage={handleSendMessage} 
+              isLoading={isLoading}
+              topic={topic}
+              onRequestChangeTopic={(t) => {
+                  if (t === '') handleNewChat();
+                  else startNewTopic(t);
+              }}
+              selectedModel={model}
+              onModelChange={setModel}
+              teachingMode={teachingMode}
+              onTeachingModeChange={setTeachingMode}
+              onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              sessionTitle={sessionTitle}
+              onUpdateSessionTitle={(t) => {
+                  setSessionTitle(t);
+                  if (currentSessionId) updateSessionTitle(currentSessionId, t);
+              }}
+          />
+        </div>
+
+        <div className="hidden lg:block w-80 xl:w-96 p-6 pl-0 h-full flex-shrink-0">
+          <Dashboard state={learningState} onExport={exportToClipboard} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default App;
