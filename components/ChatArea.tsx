@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChatMessage, MessageRole, TeachingMode } from '../types';
+import MessageContent from './MessageContent';
 
 interface ChatAreaProps {
   messages: ChatMessage[];
@@ -118,24 +119,31 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 它可以是你的严师（苏格拉底），也可以是你的益友（叙事者）。
             </p>
 
-            <form onSubmit={handleTopicSubmit} className="w-full max-w-sm mt-4">
+            <form onSubmit={handleTopicSubmit} className="w-full max-w-2xl mt-4">
             <label className="block text-sm font-medium text-slate-700 mb-2">今天探索什么知识？</label>
             <div className="flex gap-2">
-                <input
-                type="text"
+                <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="例如：相对论, 印象派, 递归算法..."
-                className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleTopicSubmit(e as any);
+                  }
+                }}
+                placeholder="例如：相对论, 印象派, 递归算法...&#10;（Shift+Enter 换行，Enter 发送）"
+                className="flex-1 px-4 py-3 min-h-[120px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow resize-y text-sm md:text-base"
                 autoFocus
+                rows={4}
                 />
                 <button
                 type="submit"
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+                className="px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors self-start"
                 >
                 启程
                 </button>
             </div>
+            <p className="text-xs text-slate-400 mt-2">💡 提示：支持多行输入，Shift+Enter 换行，Enter 发送</p>
             </form>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 text-left max-w-md w-full">
@@ -255,15 +263,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             className={`flex ${msg.role === MessageRole.User ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[90%] md:max-w-[85%] rounded-2xl px-5 py-3.5 leading-relaxed shadow-sm text-sm md:text-base ${
+              className={`max-w-[90%] md:max-w-[85%] rounded-2xl px-5 py-4 leading-relaxed shadow-sm ${
                 msg.role === MessageRole.User
                   ? 'bg-indigo-600 text-white rounded-br-none'
                   : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
               }`}
             >
-              {(msg.content || '').split('\n').map((line, i) => (
-                  <p key={i} className={`${i > 0 ? 'mt-2' : ''}`}>{line}</p>
-              ))}
+              <MessageContent 
+                content={msg.content || ''} 
+                role={msg.role === MessageRole.User ? 'user' : 'model'}
+              />
             </div>
           </div>
         ))}
@@ -283,18 +292,24 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       {/* Input */}
       <div className="p-4 bg-white border-t border-slate-100">
         <form onSubmit={handleSubmit} className="relative">
-          <input
-            type="text"
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="输入你的想法..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e as any);
+              }
+            }}
+            placeholder="输入你的想法...（Shift+Enter 换行，Enter 发送）"
             disabled={isLoading}
-            className="w-full pl-5 pr-12 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
+            className="w-full pl-5 pr-12 py-3.5 min-h-[60px] max-h-[200px] bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base resize-y"
+            rows={2}
           />
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="absolute right-2 top-2 p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-colors"
+            className="absolute right-2 bottom-2 p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
