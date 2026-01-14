@@ -1,0 +1,12 @@
+[1mdiff --git a/tsconfig.json b/tsconfig.json[m
+[1mindex 0f950d7..c9ca7ae 100644[m
+[1m--- a/tsconfig.json[m
+[1m+++ b/tsconfig.json[m
+[36m@@ -17,5 +17,5 @@[m
+     "noFallthroughCasesInSwitch": true[m
+   },[m
+   "include": ["**/*.ts", "**/*.tsx"],[m
+[31m-  "exclude": ["node_modules"][m
+[32m+[m[32m  "exclude": ["node_modules", "tests"][m
+ }[m
+\ No newline at end of file[m
