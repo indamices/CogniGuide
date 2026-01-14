@@ -67,91 +67,158 @@
 	  required: ["conversationalReply", "updatedConcepts", "updatedLinks", "appliedStrategy", "internalThought", "cognitiveLoadEstimate", "detectedStage", "summaryFragments"],
 	};
 	// ============================================
-	// 2. 优化的 DeepSeek 系统指令
+	// 2. DeepSeek System Instruction (English, aligned with Gemini)
 	// ============================================
 	export const DEEPSEEK_SYSTEM_INSTRUCTION = `
-	# 角色：CogniGuide 教学引擎与知识架构师
-	你是一个同时执行两项任务的教学系统：
-	1. **教学引擎**：根据教学模式与学生互动
-	2. **知识架构师**：整理笔记并构建层次化思维导图
-	**输出语言**：简体中文
-	## 第一部分：笔记整理引擎（只记录高价值信息）
-	### 记录原则
-	- **只记录**：已确认的定义、关键洞察、重要事实
-	- **不记录**：开放性问题、琐碎对话、未确认的猜测
-	### 记录时机（满足任一条件即可记录）
-	1. 一个子主题讨论结束，结论明确时
-	2. 一个清晰的定义被提出或确认时  
-	3. 概念之间建立重要连接时
-	### 笔记格式
-	- 使用完整、独立的句子
-	- 示例："相对论包括狭义相对论和广义相对论。"
-	## 第二部分：思维导图架构（严格树形结构）
-	### 核心规则
-	1. **结构来源**：思维导图必须直接可视化"summaryFragments"中的笔记内容
-	2. **层级关系**：严格的树形/目录结构（主题 → 类别 → 概念 → 细节）
-	3. **禁止网状连接**：只允许父子关系，不允许交叉连接
-	4. **一致性**：如果笔记说"A由B和C组成"，图中必须有A→B和A→C的连接
-	### 更新逻辑
-	- 每次响应必须重新输出所有相关节点（包括现有节点+新节点）
-	- 确保客户端能渲染完整的树结构
-	## 第三部分：教学决策引擎
-	### 分析维度
-	1. **知识类型**：
-	   - 结构型（事实、数据）
-	   - 概念型（逻辑、理论）  
-	   - 程序型（技能、步骤）
-	2. **学习者水平**：
-	   - 新手（Novice）
-	   - 熟练（Competent）
-	   - 专家（Expert）
-	### 教学模式策略
-	- **自动模式**：根据分析结果自动选择
-	  - 新手+事实 → 叙事模式
-	  - 熟练+逻辑 → 苏格拉底模式
-	  - 专家+技能 → 讲座模式
-	- **苏格拉底模式**：提问引导，不直接给出答案
-	- **叙事模式**：讲故事、历史背景、类比
-	- **讲座模式**：清晰直接的定义和步骤
-	### 教学阶段识别
-	- 介绍：引入新主题
-	- 构建：建立概念连接  
-	- 巩固：总结和强化
-	- 迁移：应用到新情境
-	- 反思：回顾学习过程
-	## 第四部分：输出格式（严格JSON）
-	### 必须字段
-	{
-	  "conversationalReply": "直接回复学生的自然对话内容（必填）",
-	  "internalThought": "简要推理：知识类型+学生状态+决策依据",
-	  "detectedStage": "当前教学阶段",
-	  "updatedConcepts": [
-	    {
-	      "id": "snake_case_id",
-	      "name": "中文名称", 
-	      "mastery": "Unknown/Novice/Competent/Expert",
-	      "description": "简短定义"
-	    }
-	  ],
-	  "updatedLinks": [
-	    {
-	      "source": "父节点ID",
-	      "target": "子节点ID", 
-	      "relationship": "关系标签"
-	    }
-	  ],
-	  "appliedStrategy": "使用的教学策略名称",
-	  "cognitiveLoadEstimate": "Low/Optimal/High",
-	  "summaryFragments": ["笔记1", "笔记2"]
-	}
-	### 关键要求
-	1. **conversationalReply 不能为空**：这是与学生的直接对话
-	2. **思维导图必须反映笔记内容**：updatedConcepts 和 updatedLinks 要基于 summaryFragments
-	3. **保持树形结构**：确保层级清晰，无交叉连接
-	4. **每次都要更新**：即使只是微调，也要重新输出完整的 updatedConcepts 和 updatedLinks
-	`;
+You are CogniGuide v1.0.6, a Dynamic Personalized Teaching Engine & Knowledge Architect.
+
+**CORE ROLE: ACTIVE KNOWLEDGE ARCHITECT**
+You have two distinct jobs that must happen simultaneously:
+1.  **Teacher:** Engage the user based on the selected Teaching Mode (Auto/Socratic/Narrative/Lecture).
+2.  **Scribe & Architect:** Record CONSOLIDATED notes into 'summaryFragments' and build a LOGICAL, HIERARCHICAL Mind Map based on those notes.
+
+**LANGUAGE:** SIMPLIFIED CHINESE (简体中文).
+
+---
+### I. NOTE TAKING ENGINE (CONSOLIDATION FOCUSED)
+**Rule:** Do NOT record every sentence. Record only **high-value, confirmed knowledge**.
+**Trigger:** Create a note ONLY when:
+- A sub-topic is concluded.
+- A clear definition is provided or agreed upon.
+- A significant connection between concepts is made.
+**Avoid:** Do not record open questions or trivial back-and-forth.
+**Format:** Notes should be complete sentences that stand alone (e.g., "The Theory of Relativity consists of Special Relativity and General Relativity.").
+
+---
+### II. MIND MAP ARCHITECT (HIERARCHICAL)
+**Rule:** The Mind Map (\`updatedConcepts\`, \`updatedLinks\`) must visualize the **structure of the Summary Notes**.
+- **Structure:** Strict Tree/Directory Hierarchy. (Topic -> Category -> Concept -> Detail).
+- **No Hairballs:** Do not create a messy network. Create a clean breakdown.
+- **Consistency:** If a Note says "A consists of B and C", the Graph MUST have links A->B and A->C.
+- **Update Logic:** You must re-emit relevant existing nodes + new nodes to ensure the client renders the full tree correctly.
+
+---
+### III. TEACHING DECISION ENGINE
+
+**1. Analyze Inputs:**
+   - **Knowledge Type:** Structural (Facts), Conceptual (Logic), Procedural (Skills).
+   - **Learner State:** Novice, Competent, Expert.
+
+**2. Select Strategy (based on 'teachingMode'):**
+   - **Auto:** Adapt based on matrix (Novice+Fact->Narrative, Competent+Logic->Socratic, etc).
+   - **Socratic:** Ask questions. Guide. Don't tell.
+   - **Narrative:** Storytelling, history, context.
+   - **Lecture:** Clear, direct definitions and steps.
+
+**3. Teaching Stages:**
+   - Introduction -> Construction -> Consolidation -> Transfer -> Reflection.
+
+---
+### IV. OUTPUT FORMAT: STRICT JSON ONLY
+
+**CRITICAL JSON OUTPUT REQUIREMENTS:**
+- You MUST output ONLY a valid JSON object
+- NO markdown code blocks (no \`\`\`json or \`\`\`)
+- NO explanatory text before or after the JSON
+- Start directly with { and end with }
+- The \`conversationalReply\` field is REQUIRED and must not be empty
+
+**Required JSON Structure:**
+{
+  "conversationalReply": "Your direct, natural response to the user in Simplified Chinese (REQUIRED, must not be empty)",
+  "internalThought": "Brief reasoning: Identified Knowledge Type + User State + Decision",
+  "detectedStage": "Introduction | Construction | Consolidation | Transfer | Reflection",
+  "updatedConcepts": [
+    {
+      "id": "snake_case_id",
+      "name": "Display name (Chinese)",
+      "mastery": "Unknown | Novice | Competent | Expert",
+      "description": "Short definition"
+    }
+  ],
+  "updatedLinks": [
+    {
+      "source": "Parent Node ID",
+      "target": "Child Node ID",
+      "relationship": "Edge label"
+    }
+  ],
+  "appliedStrategy": "Name of the pedagogical strategy used",
+  "cognitiveLoadEstimate": "Low | Optimal | High",
+  "summaryFragments": ["Note 1", "Note 2"]
+}
+
+**Key Reminders:**
+1. \`conversationalReply\` MUST contain your direct response to the user. Do not leave it empty.
+2. Mind Map must reflect the Summary Notes: \`updatedConcepts\` and \`updatedLinks\` should be based on \`summaryFragments\`
+3. Maintain tree structure: Ensure clear hierarchy, no cross-connections
+4. Always update: Even for minor adjustments, re-emit complete \`updatedConcepts\` and \`updatedLinks\`
+`;
 	// ============================================
-	// 3. 核心服务函数
+	// 3. Helper Functions
+	// ============================================
+	
+	/**
+	 * Attempt to fix common JSON parsing errors
+	 */
+	function attemptJsonFix(jsonContent: string): TutorResponse | null {
+	  try {
+	    // Try to fix common issues: trailing commas, unescaped quotes, etc.
+	    let fixed = jsonContent
+	      .replace(/,\s*}/g, '}')  // Remove trailing commas before }
+	      .replace(/,\s*]/g, ']')  // Remove trailing commas before ]
+	      .replace(/([{,]\s*)(\w+):/g, '$1"$2":')  // Add quotes around unquoted keys (simple fix)
+	      .replace(/:\s*([^",\[\]{}\s]+)([,}\]])/g, ':"$1"$2');  // Add quotes around unquoted string values
+	    
+	    return JSON.parse(fixed) as TutorResponse;
+	  } catch (e) {
+	    return null;
+	  }
+	}
+	
+	/**
+	 * Generate fallback reply when conversationalReply is missing
+	 */
+	function generateFallbackReply(
+	  parsed: Partial<TutorResponse>, 
+	  notes: string[], 
+	  isReasoner: boolean
+	): string {
+	  if (parsed.summaryFragments && parsed.summaryFragments.length > 0) {
+	    const latestNote = parsed.summaryFragments[parsed.summaryFragments.length - 1];
+	    return `好的，我已经记录了这个要点：${latestNote}\n\n你还有什么想了解的吗？`;
+	  } else if (notes.length > 0) {
+	    const latestNote = notes[notes.length - 1];
+	    return `我已经理解并记录了：${latestNote}。你还有什么想了解的吗？`;
+	  } else {
+	    return isReasoner 
+	      ? "我已经思考了这个问题，并更新了知识结构。你可以查看右侧的思维导图，或者继续提问。"
+	      : "我理解了你的问题。让我们继续深入探讨这个主题吧。";
+	  }
+	}
+	
+	/**
+	 * Validate JSON structure completeness
+	 */
+	function validateJsonStructure(obj: any): boolean {
+	  if (!obj || typeof obj !== 'object') return false;
+	  
+	  const requiredFields = [
+	    'conversationalReply',
+	    'updatedConcepts',
+	    'updatedLinks',
+	    'appliedStrategy',
+	    'internalThought',
+	    'cognitiveLoadEstimate',
+	    'detectedStage',
+	    'summaryFragments'
+	  ];
+	  
+	  return requiredFields.every(field => obj.hasOwnProperty(field));
+	}
+
+	// ============================================
+	// 4. Core Service Function
 	// ============================================
 	export const sendMessageToDeepSeek = async (
 	  history: ChatMessage[],
@@ -180,50 +247,41 @@
 	    role: msg.role === MessageRole.User ? 'user' : 'assistant',
 	    content: msg.content,
 	  }));
-	  // 3. 构建清晰的状态上下文
+	  // 3. Build concise state context (aligned with Gemini style)
 	  const stateContext = `
-	【系统状态】
-	教学模式：${teachingMode}
-	当前笔记数量：${summaryNotes.length} 条
-	当前节点数量：${currentConcepts.length} 个
-	【最近笔记摘要】
-	${summaryNotes.length > 0 
-	  ? summaryNotes.slice(-3).map((note, i) => `${i+1}. ${note}`).join('\n')
-	  : '暂无笔记'
-	}
-	【当前思维导图根节点】
-	${currentConcepts.filter(c => 
-	  !currentLinks.some(l => l.target === c.id)
-	).map(c => `- ${c.name}`).join('\n') || '暂无根节点'}
-	【指令】
-	请基于以上状态执行你的双重角色：
-	1. 作为教学引擎，用自然对话回复学生
-	2. 作为知识架构师，更新笔记和思维导图
-	  `.trim();
+    [System Context]
+    Current Teaching Mode: ${teachingMode}
+    
+    [KNOWLEDGE BASE - SUMMARY NOTES]
+    (This is the source of truth for the Mind Map. Ensure the Graph visualizes THESE notes.)
+    ${JSON.stringify(summaryNotes)}
+
+    [Current Graph State]
+    Nodes: ${JSON.stringify(currentConcepts.map(c => c.id))}
+  `.trim();
 	  // 4. 确定模型类型 (兼容原代码的 V3.2Think 和新标准 reasoner)
 	  const isReasoner = modelName.includes('reasoner') || modelName.includes('Think');
 	  const apiModelName = isReasoner ? 'deepseek-reasoner' : 'deepseek-chat';
-	  // 5. 构建消息负载
+	  // 5. Build message payload (optimized for reasoner models)
 	  let messagesPayload = [];
 	  if (isReasoner) {
-	    // 推理模型策略：将指令注入到 User 消息中
-	    const lastUserMsg = historyContext[historyContext.length - 1];
-	    const previousMsgs = historyContext.slice(0, -1);
-	    messagesPayload = [
-	      ...previousMsgs,
-	      {
-	        role: 'user',
-	        content: `${DEEPSEEK_SYSTEM_INSTRUCTION}\n\n${stateContext}\n\n学生输入：${lastUserMsg.content}\n\n请严格按照JSON格式输出，确保 conversationalReply 字段不为空。`
-	      }
-	    ];
-	  } else {
-	    // 普通模型策略：使用 System 消息
+	    // Reasoner model strategy: Keep system message separate, add brief JSON reminder in user message
 	    messagesPayload = [
 	      { role: 'system', content: DEEPSEEK_SYSTEM_INSTRUCTION },
 	      ...historyContext.slice(0, -1),
 	      {
 	        role: 'user',
-	        content: `${stateContext}\n\n学生输入：${historyContext[historyContext.length - 1].content}`
+	        content: `${stateContext}\n\nUser Input: ${historyContext[historyContext.length - 1].content}\n\nRemember: Output ONLY valid JSON, no markdown blocks, conversationalReply is required.`
+	      }
+	    ];
+	  } else {
+	    // Regular model strategy: Use System message
+	    messagesPayload = [
+	      { role: 'system', content: DEEPSEEK_SYSTEM_INSTRUCTION },
+	      ...historyContext.slice(0, -1),
+	      {
+	        role: 'user',
+	        content: `${stateContext}\n\nUser Input: ${historyContext[historyContext.length - 1].content}`
 	      }
 	    ];
 	  }
@@ -234,8 +292,9 @@
 	    model: apiModelName,
 	    messages: messagesPayload,
 	    stream: false,
-	    temperature: 0.3,
-	    max_tokens: 2000
+	    temperature: 0.2,  // Reduced for better stability and consistency
+	    max_tokens: 4000,  // Increased to avoid truncation of complex responses
+	    top_p: 0.95        // Added to work with temperature for better output quality
 	  };
 	  try {
 	    // 7. 发起请求
@@ -262,38 +321,100 @@
 	    if (!content) {
 	      throw new Error("DeepSeek 返回空内容");
 	    }
-	    // 8. 提取与清洗 JSON
+	    // 8. Extract and clean JSON with improved logic
 	    let jsonContent = content;
-	    // 尝试匹配 JSON 对象
+	    
+	    // Try to match JSON object (supporting multiline and nested structures)
 	    const jsonMatch = content.match(/\{[\s\S]*\}/);
 	    if (jsonMatch) {
 	      jsonContent = jsonMatch[0];
+	    } else {
+	      // Fallback: Try to extract outermost JSON object by counting braces
+	      let braceCount = 0;
+	      let startIdx = -1;
+	      for (let i = 0; i < content.length; i++) {
+	        if (content[i] === '{') {
+	          if (startIdx === -1) startIdx = i;
+	          braceCount++;
+	        } else if (content[i] === '}') {
+	          braceCount--;
+	          if (braceCount === 0 && startIdx !== -1) {
+	            jsonContent = content.substring(startIdx, i + 1);
+	            break;
+	          }
+	        }
+	      }
 	    }
-	    // 清理 Markdown 代码块标记
+	    
+	    // Clean Markdown code block markers
 	    jsonContent = jsonContent
 	      .replace(/^```json\s*/i, '')
 	      .replace(/^```\s*/i, '')
 	      .replace(/\s*```$/i, '')
 	      .trim();
-	    // 9. 解析 JSON
+	    
+	    // Validate JSON structure before parsing
+	    if (!jsonContent.startsWith('{') || !jsonContent.endsWith('}')) {
+	      console.error("JSON 格式异常", {
+	        startsWithBrace: jsonContent.startsWith('{'),
+	        endsWithBrace: jsonContent.endsWith('}'),
+	        preview: jsonContent.substring(0, 200),
+	        model: apiModelName
+	      });
+	      throw new Error("JSON 格式异常：必须以 { 开始，以 } 结束");
+	    }
+	    
+	    // 9. Parse JSON with enhanced error handling
 	    let parsed: TutorResponse;
 	    try {
 	      parsed = JSON.parse(jsonContent);
 	    } catch (parseError) {
-	      console.error("JSON 解析失败，原始内容:", jsonContent);
-	      throw new Error(`JSON 解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
-	    }
-	    // 10. 验证与回退处理
-	    if (!parsed.conversationalReply || parsed.conversationalReply.trim() === '') {
-	      console.warn("conversationalReply 为空，生成回退回复");
-	      if (parsed.summaryFragments && parsed.summaryFragments.length > 0) {
-	        const latestNote = parsed.summaryFragments[parsed.summaryFragments.length - 1];
-	        parsed.conversationalReply = `好的，我已经记录了这个要点：${latestNote}\n\n你还有什么想了解的吗？`;
+	      console.error("JSON 解析失败", {
+	        error: parseError instanceof Error ? parseError.message : String(parseError),
+	        contentLength: jsonContent.length,
+	        preview: jsonContent.substring(0, 200),
+	        model: apiModelName
+	      });
+	      
+	      // Attempt to fix common JSON errors
+	      const fixedJson = attemptJsonFix(jsonContent);
+	      if (fixedJson) {
+	        console.warn("成功修复 JSON 格式错误");
+	        parsed = fixedJson;
 	      } else {
-	        parsed.conversationalReply = isReasoner 
-	          ? "我已经思考了这个问题，并更新了知识结构。你可以查看右侧的思维导图，或者继续提问。"
-	          : "我理解了你的问题。让我们继续深入探讨这个主题吧。";
+	        throw new Error(`JSON 解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
 	      }
+	    }
+	    // 10. Validate and fill missing required fields
+	    const requiredFields = ['conversationalReply', 'updatedConcepts', 'updatedLinks'];
+	    const missingFields = requiredFields.filter(field => !parsed[field as keyof TutorResponse]);
+	    
+	    if (missingFields.length > 0) {
+	      console.warn("缺少必需字段", {
+	        missingFields,
+	        model: apiModelName,
+	        hasPartialData: Object.keys(parsed).length > 0
+	      });
+	      
+	      // Generate default values for missing fields
+	      missingFields.forEach(field => {
+	        if (field === 'conversationalReply') {
+	          parsed.conversationalReply = generateFallbackReply(parsed, summaryNotes, isReasoner);
+	        } else if (field === 'updatedConcepts') {
+	          parsed.updatedConcepts = currentConcepts;
+	        } else if (field === 'updatedLinks') {
+	          parsed.updatedLinks = currentLinks;
+	        }
+	      });
+	    }
+	    
+	    // Ensure conversationalReply is not empty
+	    if (!parsed.conversationalReply || parsed.conversationalReply.trim() === '') {
+	      console.warn("conversationalReply 为空，生成回退回复", {
+	        model: apiModelName,
+	        hasSummaryFragments: !!(parsed.summaryFragments && parsed.summaryFragments.length > 0)
+	      });
+	      parsed.conversationalReply = generateFallbackReply(parsed, summaryNotes, isReasoner);
 	    }
 	    // 11. 附加推理过程
 	    if (reasoning && reasoning.trim() !== '') {
@@ -338,8 +459,18 @@
 	    }
 	    return parsed;
 	  } catch (error) {
-	    console.error("DeepSeek 服务错误:", error);
-	    // 安全的错误回退响应
+	    console.error("DeepSeek 服务错误", {
+	      error: error instanceof Error ? error.message : String(error),
+	      errorType: error instanceof Error ? error.constructor.name : typeof error,
+	      model: modelName,
+	      apiModel: apiModelName,
+	      isReasoner,
+	      historyLength: cleanHistory.length,
+	      conceptsCount: currentConcepts.length,
+	      notesCount: summaryNotes.length
+	    });
+	    
+	    // Safe error fallback response
 	    const fallbackResponse: TutorResponse = {
 	      conversationalReply: "抱歉，系统暂时遇到了一些问题。让我们重新开始这个话题吧。",
 	      internalThought: `错误: ${error instanceof Error ? error.message : String(error)}`,
