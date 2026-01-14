@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { ReactElement } from 'react';
 
 interface MessageContentProps {
   content: string;
@@ -11,8 +11,8 @@ interface MessageContentProps {
  */
 const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   // 格式化内容 - 支持代码块、粗体、换行等
-  const formatContent = (text: string): JSX.Element[] => {
-    const elements: JSX.Element[] = [];
+  const formatContent = (text: string): ReactElement[] => {
+    const elements: ReactElement[] = [];
     const lines = text.split('\n');
     let currentParagraph: string[] = [];
     let inCodeBlock = false;
@@ -94,8 +94,8 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   };
 
   // 渲染内联格式（粗体、代码等）
-  const renderInlineFormatting = (text: string): (string | JSX.Element)[] => {
-    const parts: (string | JSX.Element)[] = [];
+  const renderInlineFormatting = (text: string): (string | ReactElement)[] => {
+    const parts: (string | ReactElement)[] = [];
     let lastIndex = 0;
     let key = 0;
 
