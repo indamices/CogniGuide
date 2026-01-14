@@ -28,7 +28,6 @@ const generateUniqueId = () => `${Date.now()}-${Math.random().toString(36).subst
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>('');
   const [deepSeekKey, setDeepSeekKey] = useState<string>('');
-  const [hasKey, setHasKey] = useState<boolean>(false);
   
   // Session State
   const [sessions, setSessions] = useState<SavedSession[]>([]);
@@ -55,11 +54,17 @@ const App: React.FC = () => {
 
   // --- Initial Load ---
   useEffect(() => {
-    // 修复：验证 API Key 不为空
-    const apiKey = process.env.API_KEY as string | undefined;
-    if (apiKey && apiKey.trim().length > 0) {
-      setApiKey(apiKey);
-      setHasKey(true);
+    // 从 localStorage 加载保存的 API keys
+    const storedGeminiKey = safeStorage.getItem('gemini_api_key');
+    if (storedGeminiKey) {
+      setApiKey(storedGeminiKey);
+    } else {
+      // 如果 localStorage 中没有，尝试从环境变量加载（向后兼容）
+      const envApiKey = process.env.API_KEY as string | undefined;
+      if (envApiKey && envApiKey.trim().length > 0) {
+        setApiKey(envApiKey);
+        safeStorage.setItem('gemini_api_key', envApiKey);
+      }
     }
 
     // 修复：安全访问 localStorage
@@ -131,10 +136,15 @@ const App: React.FC = () => {
     });
   }, [messages, learningState, topic, sessionTitle, model, teachingMode, currentSessionId]);
 
+  const saveGeminiKey = (key: string) => {
+    setApiKey(key);
+    safeStorage.setItem('gemini_api_key', key);
+  };
+
   const saveDeepSeekKey = (key: string) => {
-      setDeepSeekKey(key);
-      safeStorage.setItem('deepseek_api_key', key);
-  }
+    setDeepSeekKey(key);
+    safeStorage.setItem('deepseek_api_key', key);
+  };
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -257,7 +267,7 @@ const App: React.FC = () => {
       const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
       if (DEEPSEEK_MODELS.includes(currentModel)) {
           if (!deepSeekKey) {
-              throw new Error("请先设置 DeepSeek API Key");
+              throw new Error("请先在上方输入框中设置 DeepSeek API Key");
           }
           response = await sendMessageToDeepSeek(
             fullHistory,
@@ -270,7 +280,7 @@ const App: React.FC = () => {
           );
       } else {
           // Gemini models
-          if (!apiKey) throw new Error("API Key Missing");
+          if (!apiKey) throw new Error("请先在上方输入框中设置 Gemini API Key");
           response = await sendMessageToTutor(
             fullHistory,
             currentLearningState.concepts,
@@ -468,37 +478,11 @@ ${mapSection}
     }
   }, [messages, learningState, sessionTitle, topic, teachingMode]);
 
-  // Render Key Input Screen
-  if (!hasKey) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-12 h-12 bg-indigo-600 rounded-xl mx-auto mb-4 flex items-center justify-center shadow-lg">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-800 mb-2">CogniGuide {APP_VERSION}</h1>
-            <p className="text-slate-500 mb-6 text-sm">动态自适应 · 认知导向 · 终身学习</p>
-            <div className="space-y-4 text-left">
-                <input 
-                    type="password" 
-                    placeholder="输入 Google Gemini API Key"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                />
-                <button 
-                    onClick={() => { if(apiKey.length > 5) setHasKey(true); }}
-                    className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold transition-colors shadow-md"
-                >
-                    进入学习空间
-                </button>
-            </div>
-        </div>
-      </div>
-    );
-  }
+  // Helper function to check if model is Gemini
+  const isGeminiModel = (modelName: string): boolean => {
+    const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
+    return !DEEPSEEK_MODELS.includes(modelName);
+  };
 
   return (
     <div className="h-screen bg-slate-50 flex overflow-hidden">
@@ -517,8 +501,30 @@ ${mapSection}
       <div className="flex-1 flex flex-col md:flex-row min-w-0">
         <div className="flex-1 h-full p-0 md:p-4 lg:p-6 flex flex-col max-w-4xl mx-auto w-full min-w-0 relative">
           
-          {/* DeepSeek Key Warning/Input Overlay if selected but missing */}
-          {model.startsWith('V3.2') && !deepSeekKey && (
+          {/* API Key Warning/Input Overlay if selected but missing */}
+          {isGeminiModel(model) && !apiKey && (
+              <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
+                  <span className="text-xs text-amber-800 font-medium flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    使用 Gemini 需配置 API Key
+                  </span>
+                  <div className="flex gap-2">
+                    <input 
+                        type="password" 
+                        placeholder="输入 Gemini API Key" 
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-40 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        onChange={(e) => saveGeminiKey(e.target.value)}
+                        value={apiKey}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && apiKey.trim().length > 0) {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                    />
+                  </div>
+              </div>
+          )}
+          {!isGeminiModel(model) && !deepSeekKey && (
               <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
                   <span className="text-xs text-amber-800 font-medium flex items-center">
                     <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -531,6 +537,11 @@ ${mapSection}
                         className="text-xs border border-amber-300 rounded px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-amber-500"
                         onChange={(e) => saveDeepSeekKey(e.target.value)}
                         value={deepSeekKey}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && deepSeekKey.trim().length > 0) {
+                            e.currentTarget.blur();
+                          }
+                        }}
                     />
                   </div>
               </div>
