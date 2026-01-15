@@ -36,9 +36,10 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [editTitleInput, setEditTitleInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // 移除自动滚动，改为用户手动控制
+  // useEffect(() => {
+  //   bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // }, [messages]);
 
   useEffect(() => {
     setEditTitleInput(sessionTitle || topic || '');

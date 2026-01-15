@@ -6,6 +6,7 @@ import { ChatMessage, MessageRole, LearningState, ConceptNode, ConceptLink, Save
 import { sendMessageToTutor } from './services/geminiService';
 import { sendMessageToDeepSeek } from './services/deepseekService';
 import safeStorage from './utils/storage';
+import { mergeConceptsSmart, mergeLinksSmart } from './utils/mindMapHelpers';
 
 // 修复：确保 process.env 可用（仅在客户端/构建时）
 declare global {
@@ -303,36 +304,14 @@ const App: React.FC = () => {
       
       // Update Learning State
       setLearningState(prev => {
-        // Merge Concepts - 修复：如果 AI 返回的概念列表为空，保留现有概念
+        // Merge Concepts - 使用智能合并逻辑（名称相似度检测、去重）
         const mergedConcepts = response.updatedConcepts && response.updatedConcepts.length > 0
-          ? response.updatedConcepts.map(newC => {
-              // 尝试在现有概念中找到匹配的，保留其 mastery 等信息
-              const existing = prev.concepts.find(c => c.id === newC.id);
-              if (existing) {
-                // 合并：使用新数据，但如果新数据不完整，保留旧数据
-                return {
-                  ...existing,
-                  ...newC,
-                  // 确保关键字段不为空
-                  name: newC.name || existing.name,
-                  mastery: newC.mastery || existing.mastery,
-                  description: newC.description || existing.description
-                };
-              }
-              return newC;
-            })
+          ? mergeConceptsSmart(prev.concepts, response.updatedConcepts)
           : prev.concepts; // AI 没有返回概念，保持不变
 
-        // Merge Links - 修复：如果 AI 返回的链接列表为空，保留现有链接
+        // Merge Links - 使用智能合并逻辑（基于合并后的概念、过滤无效链接）
         const mergedLinks = response.updatedLinks && response.updatedLinks.length > 0
-          ? response.updatedLinks.filter(newL => {
-              // 检查是否已存在相同的链接（双向检查）
-              const exists = prev.links.some(l =>
-                (l.source === newL.source && l.target === newL.target) ||
-                (l.source === newL.target && l.target === newL.source)
-              );
-              return !exists;
-            })
+          ? mergeLinksSmart(prev.links, response.updatedLinks, mergedConcepts)
           : prev.links; // AI 没有返回链接，保持不变
         
         // Merge Summary - Support multiple fragments

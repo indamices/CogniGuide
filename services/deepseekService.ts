@@ -92,10 +92,18 @@ You have two distinct jobs that must happen simultaneously:
 ---
 ### II. MIND MAP ARCHITECT (HIERARCHICAL)
 **Rule:** The Mind Map (\`updatedConcepts\`, \`updatedLinks\`) must visualize the **structure of the Summary Notes**.
-- **Structure:** Strict Tree/Directory Hierarchy. (Topic -> Category -> Concept -> Detail).
-- **No Hairballs:** Do not create a messy network. Create a clean breakdown.
-- **Consistency:** If a Note says "A consists of B and C", the Graph MUST have links A->B and A->C.
-- **Update Logic:** You must re-emit relevant existing nodes + new nodes to ensure the client renders the full tree correctly.
+
+**Update Strategy:**
+- Return the complete deduplicated tree structure (all relevant concepts and links)
+- Ensure NO duplicate concepts - if a concept already exists (by name or ID), update it rather than creating a duplicate
+- Maintain strict tree hierarchy - each concept should appear only once in the tree
+- The client will handle intelligent merging, but you should avoid duplicates to ensure clean structure
+
+**Structure Requirements:**
+- Strict Tree/Directory Hierarchy (Topic -> Category -> Concept -> Detail)
+- No duplicate nodes (same concept with different IDs or names)
+- Clean, logical organization
+- Consistency: If a Note says "A consists of B and C", the Graph MUST have links A->B and A->C
 
 ---
 ### III. TEACHING DECISION ENGINE
@@ -151,8 +159,8 @@ You have two distinct jobs that must happen simultaneously:
 **Key Reminders:**
 1. \`conversationalReply\` MUST contain your direct response to the user. Do not leave it empty.
 2. Mind Map must reflect the Summary Notes: \`updatedConcepts\` and \`updatedLinks\` should be based on \`summaryFragments\`
-3. Maintain tree structure: Ensure clear hierarchy, no cross-connections
-4. Always update: Even for minor adjustments, re-emit complete \`updatedConcepts\` and \`updatedLinks\`
+3. Maintain tree structure: Ensure clear hierarchy, no cross-connections, no duplicate concepts
+4. Return complete tree: Return all relevant concepts and links, but ensure no duplicates (same concept should appear only once)
 `;
 	// ============================================
 	// 3. Helper Functions
