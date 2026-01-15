@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ChatArea from './components/ChatArea';
 import Dashboard from './components/Dashboard';
 import HistorySidebar from './components/HistorySidebar';
@@ -33,6 +33,7 @@ const App: React.FC = () => {
   // Session State
   const [sessions, setSessions] = useState<SavedSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const currentSessionIdRef = useRef<string | null>(null); // 用于跟踪当前会话ID，解决异步闭包问题
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default open on desktop
   
   // Current Active State
@@ -92,6 +93,7 @@ const App: React.FC = () => {
       const session = parsedSessions.find(s => s.id === lastActiveId);
       if (session) {
         setCurrentSessionId(session.id);
+        currentSessionIdRef.current = session.id; // 同步更新 ref
         setTopic(session.topic);
         setSessionTitle(session.title);
         setMessages(session.messages);
@@ -104,6 +106,7 @@ const App: React.FC = () => {
 
   // --- Auto-Save Last Active ID ---
   useEffect(() => {
+    currentSessionIdRef.current = currentSessionId; // 同步更新 ref
     if (currentSessionId) {
       safeStorage.setItem('cogniguide_last_active_id', currentSessionId);
     } else {
@@ -177,6 +180,7 @@ const App: React.FC = () => {
     if (!session) return;
 
     setCurrentSessionId(id);
+    currentSessionIdRef.current = id; // 同步更新 ref
     setTopic(session.topic);
     setSessionTitle(session.title);
     setMessages(session.messages);
@@ -193,6 +197,7 @@ const App: React.FC = () => {
   const handleNewChat = () => {
     if (!currentSessionId && !topic) return;
     setCurrentSessionId(null);
+    currentSessionIdRef.current = null; // 同步更新 ref
     setTopic('');
     setSessionTitle('');
     setMessages([]);
@@ -239,6 +244,7 @@ const App: React.FC = () => {
 
     setSessions(prev => [newSession, ...prev]);
     setCurrentSessionId(newId);
+    currentSessionIdRef.current = newId; // 同步更新 ref
     setTopic(newTopic);
     setSessionTitle(newTopic);
     setMessages([initialMessage]);
@@ -257,6 +263,8 @@ const App: React.FC = () => {
     currentLearningState: LearningState,
     currentMode: TeachingMode
   ) => {
+    // 捕获当前会话ID，用于防止竞态条件（使用ref获取最新值）
+    const requestSessionId = currentSessionIdRef.current;
     setIsLoading(true);
 
     try {
@@ -293,12 +301,25 @@ const App: React.FC = () => {
           );
       }
 
+      // 检查响应是否属于当前活跃的会话（防止切换话题后旧响应覆盖新话题）
+      // 使用ref获取最新的会话ID，避免闭包问题
+      if (currentSessionIdRef.current !== requestSessionId) {
+        console.log('忽略旧会话的响应，已切换到新话题');
+        return;
+      }
+
       const aiMsg: ChatMessage = {
         id: generateUniqueId(),
         role: MessageRole.Model,
         content: response.conversationalReply || "（知识库已更新，请查看右侧笔记）", // Robust Fallback
         timestamp: Date.now()
       };
+
+      // 再次检查会话ID（在状态更新前）
+      if (currentSessionIdRef.current !== requestSessionId) {
+        console.log('忽略旧会话的响应，在状态更新前检测到会话切换');
+        return;
+      }
 
       setMessages(prev => [...prev, aiMsg]);
       
@@ -332,6 +353,12 @@ const App: React.FC = () => {
       });
 
     } catch (error: any) {
+      // 检查错误响应是否属于当前活跃的会话
+      if (currentSessionIdRef.current !== requestSessionId) {
+        console.log('忽略旧会话的错误响应，已切换到新话题');
+        return;
+      }
+
       console.error(error);
       let errorMessage = "认知引擎连接异常。";
       if (error.message) errorMessage = error.message;
@@ -347,7 +374,10 @@ const App: React.FC = () => {
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
-      setIsLoading(false);
+      // 只有在当前会话仍然是请求时的会话时才更新loading状态
+      if (currentSessionIdRef.current === requestSessionId) {
+        setIsLoading(false);
+      }
     }
   };
 
