@@ -13,6 +13,7 @@ import { useTheme } from './components/ThemeProvider';
 import { ChatMessage, MessageRole, LearningState, ConceptNode, ConceptLink, SavedSession, TeachingMode, TeachingStage, TutorResponse } from './types';
 import { sendMessageToTutor } from './services/geminiService';
 import { sendMessageToDeepSeek } from './services/deepseekService';
+import { sendMessageToGLM } from './services/glmService';
 import safeStorage from './utils/storage';
 import { mergeConceptsSmart, mergeLinksSmart } from './utils/mindMapHelpers';
 
@@ -55,6 +56,7 @@ const generateUniqueId = () => `${Date.now()}-${Math.random().toString(36).subst
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>('');
   const [deepSeekKey, setDeepSeekKey] = useState<string>('');
+  const [glmKey, setGlmKey] = useState<string>('');
   
   // Session State
   const [sessions, setSessions] = useState<SavedSession[]>([]);
@@ -145,6 +147,11 @@ const App: React.FC = () => {
         setDeepSeekKey(storedDSKey);
     }
     
+    const storedGLMKey = safeStorage.getItem('glm_api_key');
+    if (storedGLMKey) {
+        setGlmKey(storedGLMKey);
+    }
+    
     // Load sessions
     let parsedSessions: SavedSession[] = [];
     const storedSessions = safeStorage.getItem('cogniguide_sessions');
@@ -233,6 +240,11 @@ const App: React.FC = () => {
   const saveDeepSeekKey = (key: string) => {
     setDeepSeekKey(key);
     safeStorage.setItem('deepseek_api_key', key);
+  };
+
+  const saveGLMKey = (key: string) => {
+    setGlmKey(key);
+    safeStorage.setItem('glm_api_key', key);
   };
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
@@ -539,7 +551,23 @@ const App: React.FC = () => {
 
       // 修复：使用明确的模型列表检查
       const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
-      if (DEEPSEEK_MODELS.includes(currentModel)) {
+      const GLM_MODELS = ['GLM-4.7-Flash', 'GLM-4.7-Plus', 'GLM-4.7-Air', 'GLM-4.7-Bolt', 'glm-4-flash', 'glm-4-plus', 'GLM-4', 'GLM-4-flash', 'GLM-4-plus'];
+      
+      if (GLM_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
+          // GLM models
+          if (!glmKey) {
+              throw new Error("请先在上方输入框中设置 GLM API Key");
+          }
+          response = await sendMessageToGLM(
+            fullHistory,
+            currentLearningState.concepts,
+            currentLearningState.links,
+            currentLearningState.summary,
+            glmKey,
+            currentModel,
+            currentMode
+          );
+      } else if (DEEPSEEK_MODELS.includes(currentModel)) {
           if (!deepSeekKey) {
               throw new Error("请先在上方输入框中设置 DeepSeek API Key");
           }
@@ -801,7 +829,8 @@ ${mapSection}
   // Helper function to check if model is Gemini
   const isGeminiModel = (modelName: string): boolean => {
     const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
-    return !DEEPSEEK_MODELS.includes(modelName);
+    const GLM_MODELS = ['GLM-4.7-Flash', 'GLM-4.7-Plus', 'GLM-4.7-Air', 'GLM-4.7-Bolt', 'glm-4-flash', 'glm-4-plus', 'GLM-4'];
+    return !DEEPSEEK_MODELS.includes(modelName) && !GLM_MODELS.some(m => modelName.toLowerCase().includes(m.toLowerCase()));
   };
 
   return (
@@ -886,8 +915,38 @@ ${mapSection}
                   </div>
               </div>
           )}
-          {!isGeminiModel(model) && !deepSeekKey && (
-              <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
+          {(() => {
+            const GLM_MODELS = ['GLM-4.7-Flash', 'GLM-4.7-Plus', 'GLM-4.7-Air', 'GLM-4.7-Bolt', 'glm-4'];
+            const isGLMModel = GLM_MODELS.some(m => model.toLowerCase().includes(m.toLowerCase()));
+            const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
+            const isDeepSeekModel = DEEPSEEK_MODELS.includes(model);
+            
+            if (isGLMModel && !glmKey) {
+              return (
+                <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
+                  <span className="text-xs text-amber-800 font-medium flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    使用 GLM-4.7 需配置 API Key
+                  </span>
+                  <div className="flex gap-2">
+                    <input 
+                        type="password" 
+                        placeholder="GLM API Key" 
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-40 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        onChange={(e) => saveGLMKey(e.target.value)}
+                        value={glmKey}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && glmKey.trim().length > 0) {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                    />
+                  </div>
+                </div>
+              );
+            } else if (isDeepSeekModel && !deepSeekKey) {
+              return (
+                <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
                   <span className="text-xs text-amber-800 font-medium flex items-center">
                     <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     使用 DeepSeek 需配置 Key
@@ -906,8 +965,11 @@ ${mapSection}
                         }}
                     />
                   </div>
-              </div>
-          )}
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           <ChatArea 
               messages={messages} 

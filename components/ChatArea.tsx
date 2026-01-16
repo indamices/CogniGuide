@@ -93,6 +93,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro' },
     { id: 'V3.2', name: 'DeepSeek V3.2' },
     { id: 'V3.2Think', name: 'DeepSeek V3.2 Think' },
+    { id: 'GLM-4.7-Flash', name: 'GLM-4 Flash ⚡' },
+    { id: 'GLM-4.7-Plus', name: 'GLM-4 Plus 🚀' },
   ];
 
   const teachingModes = [

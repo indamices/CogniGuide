@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { MasteryLevel, LearningState, TeachingStage } from '../types';
-import KnowledgeMap from './KnowledgeMap';
+import KnowledgeMapSimple from './KnowledgeMapSimple';
 
 interface DashboardProps {
   state: LearningState;
@@ -52,7 +52,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
               </button>
             </div>
             <div className="flex-1 relative bg-slate-50">
-              <KnowledgeMap nodes={state.concepts} links={state.links} />
+              <KnowledgeMapSimple concepts={state.concepts} links={state.links} />
             </div>
           </div>
         </div>
@@ -147,16 +147,20 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
             )}
         </div>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/30">
-            <button 
-                onClick={() => setShowMindMap(true)}
-                disabled={state.concepts.length === 0}
-                className="w-full py-2 px-4 bg-white border border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-200 hover:shadow-sm rounded-lg transition-all disabled:opacity-50 text-xs font-medium"
-            >
-                查看逻辑脑图
-            </button>
-        </div>
       </div>
+
+      {/* Floating Mind Map Button - Fixed Position (Outside of scrollable container) */}
+      <button 
+        onClick={() => setShowMindMap(true)}
+        disabled={state.concepts.length === 0}
+        className="fixed bottom-6 right-6 z-30 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl shadow-2xl hover:shadow-3xl transition-all disabled:opacity-50 disabled:bg-indigo-400 disabled:hover:bg-indigo-400 disabled:cursor-not-allowed text-xs font-semibold flex items-center justify-center gap-2 backdrop-blur-sm"
+        aria-label="查看知识图谱（右下角悬浮按钮）"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+        <span>查看脑图</span>
+      </button>
     </div>
   );
 };
