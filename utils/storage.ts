@@ -9,11 +9,11 @@ const safeStorage = {
    */
   getItem: (key: string): string | null => {
     try {
-      if (typeof window === 'undefined') {
+      if (typeof window === 'undefined' || !window.localStorage) {
         console.warn('Cannot access localStorage: window is not defined (SSR or test environment)');
         return null;
       }
-      return localStorage.getItem(key);
+      return window.localStorage.getItem(key);
     } catch (e) {
       console.warn(`Failed to get localStorage item "${key}":`, e);
       return null;
@@ -25,11 +25,11 @@ const safeStorage = {
    */
   setItem: (key: string, value: string): boolean => {
     try {
-      if (typeof window === 'undefined') {
+      if (typeof window === 'undefined' || !window.localStorage) {
         console.warn('Cannot access localStorage: window is not defined (SSR or test environment)');
         return false;
       }
-      localStorage.setItem(key, value);
+      window.localStorage.setItem(key, value);
       return true;
     } catch (e) {
       console.warn(`Failed to set localStorage item "${key}":`, e);
@@ -42,11 +42,11 @@ const safeStorage = {
    */
   removeItem: (key: string): boolean => {
     try {
-      if (typeof window === 'undefined') {
+      if (typeof window === 'undefined' || !window.localStorage) {
         console.warn('Cannot access localStorage: window is not defined (SSR or test environment)');
         return false;
       }
-      localStorage.removeItem(key);
+      window.localStorage.removeItem(key);
       return true;
     } catch (e) {
       console.warn(`Failed to remove localStorage item "${key}":`, e);

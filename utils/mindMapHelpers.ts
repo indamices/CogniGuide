@@ -22,8 +22,11 @@ export function calculateNameSimilarity(name1: string, name2: string): number {
   const norm1 = normalizeName(name1);
   const norm2 = normalizeName(name2);
   
+  // 修复：明确处理空字符串情况
+  if (norm1.length === 0 && norm2.length === 0) return 1.0; // 两个空字符串相似度为1
+  if (norm1.length === 0 || norm2.length === 0) return 0; // 一个为空，一个不为空，相似度为0
+  
   if (norm1 === norm2) return 1.0;
-  if (norm1.length === 0 || norm2.length === 0) return 0;
   
   // 如果其中一个完全包含另一个，相似度较高
   if (norm1.includes(norm2) || norm2.includes(norm1)) {
@@ -187,15 +190,15 @@ export function validateTreeStructure(
   }
   
   // 检查循环（使用DFS）
+  // 修复：即使没有根节点（如双向链接），也要检查所有节点的循环
   const visited = new Set<string>();
-  const recStack = new Set<string>();
   
-  const hasCycle = (nodeId: string): boolean => {
+  const hasCycle = (nodeId: string, recStack: Set<string>): boolean => {
     if (recStack.has(nodeId)) {
       return true; // 发现循环
     }
     if (visited.has(nodeId)) {
-      return false; // 已访问过，但不是循环
+      return false; // 已访问过，但不是当前路径的循环
     }
     
     visited.add(nodeId);
@@ -206,7 +209,7 @@ export function validateTreeStructure(
       .map(l => l.target);
     
     for (const childId of children) {
-      if (hasCycle(childId)) {
+      if (hasCycle(childId, recStack)) {
         return true;
       }
     }
@@ -219,16 +222,32 @@ export function validateTreeStructure(
   const targets = new Set(links.map(l => l.target));
   const roots = concepts.filter(c => !targets.has(c.id));
   
-  for (const root of roots) {
-    if (hasCycle(root.id)) {
-      console.warn('Cycle detected in tree structure');
-      return false;
+  // 如果有根节点，从根节点开始检查
+  if (roots.length > 0) {
+    for (const root of roots) {
+      const recStack = new Set<string>();
+      if (hasCycle(root.id, recStack)) {
+        console.warn('Cycle detected in tree structure starting from root:', root.id);
+        return false;
+      }
     }
-  }
-  
-  // 如果没有根节点，但有点和链接，可能是问题（但不算错误）
-  if (roots.length === 0 && concepts.length > 0 && links.length > 0) {
-    console.warn('No root nodes found, but nodes and links exist');
+  } else {
+    // 如果没有根节点（可能是循环结构），检查所有节点
+    // 修复：双向链接和循环结构都会被检测
+    for (const concept of concepts) {
+      if (!visited.has(concept.id)) {
+        const recStack = new Set<string>();
+        if (hasCycle(concept.id, recStack)) {
+          console.warn('Cycle detected in tree structure (no root nodes):', concept.id);
+          return false;
+        }
+      }
+    }
+    
+    // 如果没有根节点，但有点和链接，可能是问题（但不算错误）
+    if (concepts.length > 0 && links.length > 0) {
+      console.warn('No root nodes found, but nodes and links exist. This might indicate a cycle or disconnected components.');
+    }
   }
   
   return true;

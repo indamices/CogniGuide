@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ChatArea from './components/ChatArea';
 import Dashboard from './components/Dashboard';
 import HistorySidebar from './components/HistorySidebar';
@@ -115,21 +115,36 @@ const App: React.FC = () => {
   }, [currentSessionId]);
 
   // --- Auto-Save Session ---
+  // 性能优化：使用useMemo缓存序列化的会话数据，减少不必要的保存操作
+  const sessionDataToSave = useMemo(() => {
+    if (!currentSessionId) return null;
+    
+    return {
+      sessionId: currentSessionId,
+      title: sessionTitle,
+      topic: topic,
+      messages: messages,
+      learningState: learningState,
+      model: model,
+      teachingMode: teachingMode,
+    };
+  }, [currentSessionId, sessionTitle, topic, messages, learningState, model, teachingMode]);
+
   useEffect(() => {
-    if (!currentSessionId) return;
+    if (!sessionDataToSave || !sessionDataToSave.sessionId) return;
 
     setSessions(prevSessions => {
-      const index = prevSessions.findIndex(s => s.id === currentSessionId);
+      const index = prevSessions.findIndex(s => s.id === sessionDataToSave.sessionId);
       if (index === -1) return prevSessions;
 
       const updatedSession: SavedSession = {
         ...prevSessions[index],
-        title: sessionTitle || prevSessions[index].title,
-        topic: topic,
-        messages: messages,
-        learningState: learningState,
-        model: model,
-        teachingMode: teachingMode,
+        title: sessionDataToSave.title || prevSessions[index].title,
+        topic: sessionDataToSave.topic,
+        messages: sessionDataToSave.messages,
+        learningState: sessionDataToSave.learningState,
+        model: sessionDataToSave.model,
+        teachingMode: sessionDataToSave.teachingMode,
         lastModified: Date.now()
       };
 
@@ -138,7 +153,7 @@ const App: React.FC = () => {
       safeStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
       return newSessions;
     });
-  }, [messages, learningState, topic, sessionTitle, model, teachingMode, currentSessionId]);
+  }, [sessionDataToSave]);
 
   const saveGeminiKey = (key: string) => {
     setApiKey(key);
@@ -242,15 +257,18 @@ const App: React.FC = () => {
       lastModified: Date.now()
     };
 
-    setSessions(prev => [newSession, ...prev]);
+    setSessions(prev => {
+      const updatedSessions = [newSession, ...prev];
+      // 修复：使用更新后的会话列表保存到localStorage
+      safeStorage.setItem('cogniguide_sessions', JSON.stringify(updatedSessions));
+      return updatedSessions;
+    });
     setCurrentSessionId(newId);
     currentSessionIdRef.current = newId; // 同步更新 ref
     setTopic(newTopic);
     setSessionTitle(newTopic);
     setMessages([initialMessage]);
     setLearningState(newSession.learningState);
-
-    safeStorage.setItem('cogniguide_sessions', JSON.stringify([newSession, ...sessions]));
     safeStorage.setItem('cogniguide_last_active_id', newId);
 
     await processMessage(initialMessage, [], model, newSession.learningState, teachingMode);
@@ -360,10 +378,43 @@ const App: React.FC = () => {
       }
 
       console.error(error);
+      
+      // 改进错误处理：区分不同类型的错误
       let errorMessage = "认知引擎连接异常。";
-      if (error.message) errorMessage = error.message;
-      if (error.message && error.message.includes("429")) {
-          errorMessage = "思考过载 (429)。请稍后重试或切换轻量模型。";
+      
+      if (error?.message) {
+        const errorMsg = error.message.toLowerCase();
+        
+        // 网络错误
+        if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('timeout')) {
+          errorMessage = "网络连接失败，请检查网络后重试。";
+        }
+        // API限流错误
+        else if (errorMsg.includes('429') || errorMsg.includes('rate limit') || errorMsg.includes('quota')) {
+          errorMessage = "请求频率过高 (429)。请稍后重试或切换轻量模型。";
+        }
+        // API密钥错误
+        else if (errorMsg.includes('api key') || errorMsg.includes('401') || errorMsg.includes('unauthorized')) {
+          errorMessage = "API Key 无效或已过期。请检查并更新您的 API Key。";
+        }
+        // JSON解析错误
+        else if (errorMsg.includes('json') || errorMsg.includes('parse') || errorMsg.includes('syntax')) {
+          errorMessage = "响应解析失败。请重试或联系技术支持。";
+        }
+        // 服务器错误
+        else if (errorMsg.includes('500') || errorMsg.includes('502') || errorMsg.includes('503') || errorMsg.includes('504')) {
+          errorMessage = "服务器暂时不可用，请稍后重试。";
+        }
+        // 其他API错误
+        else if (errorMsg.includes('400') || errorMsg.includes('403') || errorMsg.includes('404')) {
+          errorMessage = `API 错误: ${error.message}`;
+        }
+        // 使用原始错误消息
+        else {
+          errorMessage = error.message;
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error;
       }
 
       const errorMsg: ChatMessage = {
