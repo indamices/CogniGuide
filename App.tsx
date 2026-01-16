@@ -2,11 +2,37 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import ChatArea from './components/ChatArea';
 import Dashboard from './components/Dashboard';
 import HistorySidebar from './components/HistorySidebar';
+import EmptyState from './components/EmptyState';
+import KeyboardNav from './components/KeyboardNav';
+import ConfirmDialog from './components/ConfirmDialog';
+import ExportDialog from './components/ExportDialog';
+import NotificationSystem, { NotificationType } from './components/NotificationSystem';
+import ThemeToggle from './components/ThemeToggle';
+import UndoRedoToolbar from './components/UndoRedoToolbar';
+import { useTheme } from './components/ThemeProvider';
 import { ChatMessage, MessageRole, LearningState, ConceptNode, ConceptLink, SavedSession, TeachingMode, TeachingStage, TutorResponse } from './types';
 import { sendMessageToTutor } from './services/geminiService';
 import { sendMessageToDeepSeek } from './services/deepseekService';
 import safeStorage from './utils/storage';
 import { mergeConceptsSmart, mergeLinksSmart } from './utils/mindMapHelpers';
+
+interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  timestamp: number;
+  autoClose?: boolean;
+  duration?: number;
+}
+
+interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  timestamp: number;
+  autoClose?: boolean;
+  duration?: number;
+}
 
 // 修复：确保 process.env 可用（仅在客户端/构建时）
 declare global {
@@ -43,6 +69,9 @@ const App: React.FC = () => {
   const [teachingMode, setTeachingMode] = useState<TeachingMode>(TeachingMode.Auto); // New: Teaching Mode
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
+  const [estimatedResponseTime, setEstimatedResponseTime] = useState<number>(0);
+  const [loadingProgress, setLoadingProgress] = useState<number>(0);
   
   const [learningState, setLearningState] = useState<LearningState>({
     concepts: [],
@@ -53,6 +82,47 @@ const App: React.FC = () => {
     feedback: '',
     summary: []
   });
+
+  // History Stack for Undo/Redo
+  const [historyStack, setHistoryStack] = useState<any[]>([]);
+  const [redoStack, setRedoStack] = useState<any[]>([]);
+
+  // Notification System
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // Confirmation Dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    type: 'danger' | 'warning' | 'info';
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    type: 'danger',
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  // Export Dialog
+  const [exportDialog, setExportDialog] = useState(false);
+
+  // Notification helper
+  const addNotification = useCallback((
+    type: NotificationType,
+    message: string,
+    autoClose = true,
+    duration = 5000
+  ) => {
+    const id = Date.now().toString();
+    const notification: Notification = { id, type, message, timestamp: Date.now(), autoClose, duration };
+    setNotifications(prev => [notification, ...prev]);
+  }, []);
+
+  const removeNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
 
   // --- Initial Load ---
   useEffect(() => {
@@ -167,16 +237,152 @@ const App: React.FC = () => {
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm("确定要删除这个对话吗？")) return;
+    
+    const session = sessions.find(s => s.id === id);
+    if (!session) return;
+
+    const confirmMessage = session 
+      ? `确定要删除 "${session.title || session.topic}" 对话吗？\n\n包含 ${session.messages.length} 条消息\n删除后无法恢复`
+      : '确定要删除这个对话吗？\n\n删除后无法恢复';
+    
+    const confirmed = window.confirm(confirmMessage);
+    if (!confirmed) return;
+
+    // 保存到历史栈以便撤销
+    setHistoryStack(prev => [...prev, { type: 'delete_session', session, id: Date.now() }]);
+    setRedoStack([]);
 
     const newSessions = sessions.filter(s => s.id !== id);
     setSessions(newSessions);
     safeStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+    addNotification('info', `已删除对话: ${session.title || session.topic}`);
 
     if (currentSessionId === id) {
-      handleNewChat();
+      if (!topic && !sessionTitle) {
+        // 如果没有当前主题，直接重置
+        setCurrentSessionId(null);
+        currentSessionIdRef.current = null;
+        setTopic('');
+        setSessionTitle('');
+        setMessages([]);
+        setLearningState({
+          concepts: [],
+          links: [],
+          currentStrategy: '等待主题...',
+          currentStage: TeachingStage.Introduction,
+          cognitiveLoad: 'Optimal',
+          feedback: '',
+          summary: []
+        });
+        setTeachingMode(TeachingMode.Auto);
+        safeStorage.removeItem('cogniguide_last_active_id');
+      } else {
+        // 如果有主题，创建新对话
+        handleNewChat();
+      }
     }
   };
+
+  const undo = useCallback(() => {
+    if (historyStack.length === 0) {
+      addNotification('warning', '没有可撤销的操作');
+      return;
+    }
+
+    const lastAction = historyStack[historyStack.length - 1];
+    setHistoryStack(prev => prev.slice(0, -1));
+    setRedoStack(prev => [...prev, lastAction]);
+
+    switch (lastAction.type) {
+      case 'delete_session':
+        // 恢复被删除的会话
+        const newSessions = [...sessions, lastAction.session];
+        setSessions(newSessions);
+        safeStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+        addNotification('success', `已恢复对话: ${lastAction.session.title || lastAction.session.topic}`);
+        
+        // 加载恢复的会话
+        setCurrentSessionId(lastAction.session.id);
+        currentSessionIdRef.current = lastAction.session.id;
+        setTopic(lastAction.session.topic);
+        setSessionTitle(lastAction.session.title);
+        setMessages(lastAction.session.messages);
+        setLearningState(lastAction.session.learningState);
+        setModel(lastAction.session.model || 'gemini-2.5-flash');
+        setTeachingMode(lastAction.session.teachingMode || TeachingMode.Auto);
+        break;
+      case 'switch_session':
+        // 切换回上一个会话
+        if (lastAction.previousId) {
+          const session = sessions.find(s => s.id === lastAction.previousId) || lastAction.session;
+          setCurrentSessionId(lastAction.previousId);
+          currentSessionIdRef.current = lastAction.previousId;
+          setTopic(session.topic);
+          setSessionTitle(session.title);
+          setMessages(session.messages);
+          setLearningState(session.learningState);
+          setModel(session.model || 'gemini-2.5-flash');
+          setTeachingMode(session.teachingMode || TeachingMode.Auto);
+          addNotification('info', `已切换回上一个会话`);
+        }
+        break;
+    }
+  }, [historyStack, sessions, addNotification]);
+
+  const redo = useCallback(() => {
+    if (redoStack.length === 0) {
+      addNotification('warning', '没有可重做的操作');
+      return;
+    }
+
+    const lastAction = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setHistoryStack(prev => [...prev, lastAction]);
+
+    switch (lastAction.type) {
+      case 'delete_session':
+        // 重新删除
+        const newSessions = sessions.filter(s => s.id !== lastAction.session.id);
+        setSessions(newSessions);
+        safeStorage.setItem('cogniguide_sessions', JSON.stringify(newSessions));
+        addNotification('info', `已重新删除对话: ${lastAction.session.title || lastAction.session.topic}`);
+        
+        // 删除后处理
+        if (currentSessionId === lastAction.session.id) {
+          setCurrentSessionId(null);
+          currentSessionIdRef.current = null;
+          setTopic('');
+          setSessionTitle('');
+          setMessages([]);
+          setLearningState({
+            concepts: [],
+            links: [],
+            currentStrategy: '等待主题...',
+            currentStage: TeachingStage.Introduction,
+            cognitiveLoad: 'Optimal',
+            feedback: '',
+            summary: []
+          });
+          setTeachingMode(TeachingMode.Auto);
+          safeStorage.removeItem('cogniguide_last_active_id');
+        }
+        break;
+      case 'switch_session':
+        // 重新切换
+        if (lastAction.session.id) {
+          setCurrentSessionId(lastAction.session.id);
+          currentSessionIdRef.current = lastAction.session.id;
+          setTopic(lastAction.session.topic);
+          setSessionTitle(lastAction.session.title);
+          setMessages(lastAction.session.messages);
+          setLearningState(lastAction.session.learningState);
+          setModel(lastAction.session.model || 'gemini-2.5-flash');
+          setTeachingMode(lastAction.session.teachingMode || TeachingMode.Auto);
+          addNotification('info', `已重新切换会话`);
+        }
+        break;
+    }
+  }, [redoStack, sessions, currentSessionId, addNotification]);
 
   const updateSessionTitle = (id: string, newTitle: string) => {
     const newSessions = sessions.map(s =>
@@ -211,6 +417,20 @@ const App: React.FC = () => {
 
   const handleNewChat = () => {
     if (!currentSessionId && !topic) return;
+    
+    // 保存当前状态到历史栈
+    if (currentSessionId) {
+      const currentSession = sessions.find(s => s.id === currentSessionId);
+      if (currentSession) {
+        setHistoryStack(prev => [...prev, {
+          type: 'switch_session',
+          session: currentSession,
+          previousId: currentSessionId
+        }]);
+        setRedoStack([]);
+      }
+    }
+    
     setCurrentSessionId(null);
     currentSessionIdRef.current = null; // 同步更新 ref
     setTopic('');
@@ -228,6 +448,26 @@ const App: React.FC = () => {
     setTeachingMode(TeachingMode.Auto);
     safeStorage.removeItem('cogniguide_last_active_id');
   };
+
+  // 键盘快捷键监听
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + Z: 撤销
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      // Ctrl/Cmd + Y or Ctrl/Cmd + Shift + Z: 重做
+      if (((e.ctrlKey || e.metaKey) && e.key === 'y') || 
+          ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   const startNewTopic = async (newTopic: string) => {
     const newId = generateUniqueId();
@@ -281,9 +521,16 @@ const App: React.FC = () => {
     currentLearningState: LearningState,
     currentMode: TeachingMode
   ) => {
-    // 捕获当前会话ID，用于防止竞态条件（使用ref获取最新值）
-    const requestSessionId = currentSessionIdRef.current;
-    setIsLoading(true);
+      // 捕获当前会话ID，用于防止竞态条件（使用ref获取最新值）
+      const requestSessionId = currentSessionIdRef.current;
+      setIsLoading(true);
+      setIsStreaming(true);
+      setLoadingProgress(0);
+      
+      // 模拟加载进度（实际流式时会被真实数据更新覆盖）
+      const progressInterval = setInterval(() => {
+        setLoadingProgress(prev => Math.min(prev + 10, 90));
+      }, 100);
 
     try {
       const fullHistory = [...history, userMsg];
@@ -323,6 +570,10 @@ const App: React.FC = () => {
       // 使用ref获取最新的会话ID，避免闭包问题
       if (currentSessionIdRef.current !== requestSessionId) {
         console.log('忽略旧会话的响应，已切换到新话题');
+        clearInterval(progressInterval);
+        setIsLoading(false);
+        setIsStreaming(false);
+        setLoadingProgress(0);
         return;
       }
 
@@ -374,8 +625,14 @@ const App: React.FC = () => {
       // 检查错误响应是否属于当前活跃的会话
       if (currentSessionIdRef.current !== requestSessionId) {
         console.log('忽略旧会话的错误响应，已切换到新话题');
+        clearInterval(progressInterval);
+        setIsLoading(false);
+        setIsStreaming(false);
+        setLoadingProgress(0);
         return;
       }
+
+      clearInterval(progressInterval);
 
       console.error(error);
       
@@ -425,9 +682,12 @@ const App: React.FC = () => {
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
+      clearInterval(progressInterval);
       // 只有在当前会话仍然是请求时的会话时才更新loading状态
       if (currentSessionIdRef.current === requestSessionId) {
         setIsLoading(false);
+        setIsStreaming(false);
+        setLoadingProgress(0);
       }
     }
   };
@@ -546,6 +806,48 @@ ${mapSection}
 
   return (
     <div className="h-screen bg-slate-50 flex overflow-hidden">
+      {/* Notification System */}
+      <NotificationSystem
+        notifications={notifications}
+        onRemove={removeNotification}
+      />
+
+      {/* Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ isOpen: false, type: 'danger', title: '', message: '', onConfirm: () => {} })}
+      />
+
+      {/* Export Dialog */}
+      <ExportDialog
+        isOpen={exportDialog}
+        onClose={() => setExportDialog(false)}
+        messages={messages}
+        learningState={learningState}
+        topic={topic || sessionTitle}
+      />
+
+      {/* Keyboard Navigation */}
+      <KeyboardNav
+        onNextSession={() => {
+          const currentIndex = sessions.findIndex(s => s.id === currentSessionId);
+          if (currentIndex > 0) {
+            loadSession(sessions[currentIndex - 1].id);
+          }
+        }}
+        onPrevSession={() => {
+          const currentIndex = sessions.findIndex(s => s.id === currentSessionId);
+          if (currentIndex < sessions.length - 1) {
+            loadSession(sessions[currentIndex + 1].id);
+          }
+        }}
+        onNewChat={handleNewChat}
+      />
+
       <HistorySidebar 
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -611,6 +913,8 @@ ${mapSection}
               messages={messages} 
               onSendMessage={handleSendMessage} 
               isLoading={isLoading}
+              isStreaming={isStreaming}
+              loadingProgress={loadingProgress}
               topic={topic}
               onRequestChangeTopic={(t) => {
                   if (t === '') handleNewChat();
@@ -630,7 +934,19 @@ ${mapSection}
         </div>
 
         <div className="hidden lg:block w-80 xl:w-96 p-6 pl-0 h-full flex-shrink-0">
-          <Dashboard state={learningState} onExport={exportToClipboard} />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-slate-800">学习仪表板</h2>
+            <div className="flex items-center gap-2">
+              <UndoRedoToolbar
+                canUndo={historyStack.length > 0}
+                canRedo={redoStack.length > 0}
+                onUndo={undo}
+                onRedo={redo}
+              />
+              <ThemeToggle />
+            </div>
+          </div>
+          <Dashboard state={learningState} onExport={() => setExportDialog(true)} />
         </div>
       </div>
     </div>

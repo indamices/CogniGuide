@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SavedSession } from '../types';
 
 interface HistorySidebarProps {
@@ -26,6 +26,8 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterModel, setFilterModel] = useState<string>('all');
 
   const startEditing = (session: SavedSession, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -48,8 +50,27 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     }
   };
 
-  // Sort sessions by last modified (newest first)
-  const sortedSessions = [...sessions].sort((a, b) => b.lastModified - a.lastModified);
+  // Filter and sort sessions
+  const filteredSessions = useMemo(() => {
+    return sessions
+      .filter(session => {
+        // Search filter
+        const matchesSearch = searchQuery === '' ||
+          session.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          session.topic.toLowerCase().includes(searchQuery.toLowerCase());
+
+        // Model filter
+        const isGemini = session.model.includes('gemini');
+        const isDeepSeek = session.model.includes('deepseek') || session.model.includes('V3') || session.model.includes('V2');
+        
+        let matchesModel = true;
+        if (filterModel === 'gemini') matchesModel = isGemini;
+        else if (filterModel === 'deepseek') matchesModel = isDeepSeek;
+
+        return matchesSearch && matchesModel;
+      })
+      .sort((a, b) => b.lastModified - a.lastModified);
+  }, [sessions, searchQuery, filterModel]);
 
   return (
     <>
@@ -94,14 +115,78 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           </button>
         </div>
 
+        {/* Search Bar */}
+        <div className="px-3 pb-3">
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="搜索对话..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="搜索历史对话"
+              className="w-full pl-9 pr-8 py-2 bg-slate-100 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                aria-label="清除搜索"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {/* Model Filter */}
+          <div className="flex gap-1 mt-2">
+            <button
+              onClick={() => setFilterModel('all')}
+              className={`flex-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                filterModel === 'all'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-slate-500 hover:bg-slate-100'
+              }`}
+              aria-pressed={filterModel === 'all'}
+            >
+              全部
+            </button>
+            <button
+              onClick={() => setFilterModel('gemini')}
+              className={`flex-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                filterModel === 'gemini'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-slate-500 hover:bg-slate-100'
+              }`}
+              aria-pressed={filterModel === 'gemini'}
+            >
+              Gemini
+            </button>
+            <button
+              onClick={() => setFilterModel('deepseek')}
+              className={`flex-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                filterModel === 'deepseek'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-slate-500 hover:bg-slate-100'
+              }`}
+              aria-pressed={filterModel === 'deepseek'}
+            >
+              DeepSeek
+            </button>
+          </div>
+        </div>
+
         {/* Session List */}
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 scrollbar-thin scrollbar-thumb-slate-200">
-          {sortedSessions.length === 0 ? (
+          {filteredSessions.length === 0 ? (
             <div className="text-center text-slate-400 py-8 text-sm px-4">
-              暂无历史记录
+              {searchQuery || filterModel !== 'all' ? '没有找到匹配的对话' : '暂无历史记录'}
             </div>
           ) : (
-            sortedSessions.map(session => (
+            filteredSessions.map(session => (
               <div
                 key={session.id}
                 onClick={() => {
@@ -132,8 +217,13 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                       <h3 className={`font-medium text-sm truncate ${currentSessionId === session.id ? 'text-indigo-700' : 'text-slate-700'}`}>
                         {session.title || '未命名对话'}
                       </h3>
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">
+                      <p className="text-xs text-slate-400 mt-0.5 truncate flex items-center gap-1">
                         {new Date(session.lastModified).toLocaleDateString()} · {session.messages.length} 条消息
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          session.model.includes('gemini') ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                        }`}>
+                          {session.model.includes('gemini') ? 'G' : 'D'}
+                        </span>
                       </p>
                     </>
                   )}

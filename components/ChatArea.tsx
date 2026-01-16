@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChatMessage, MessageRole, TeachingMode } from '../types';
 import MessageContent from './MessageContent';
+import EmptyState from './EmptyState';
 
 interface ChatAreaProps {
   messages: ChatMessage[];
   onSendMessage: (text: string) => void;
   isLoading: boolean;
+  isStreaming?: boolean;
+  loadingProgress?: number;
   topic?: string;
   onRequestChangeTopic: (newTopic: string) => void; 
   selectedModel: string;
@@ -20,7 +23,9 @@ interface ChatAreaProps {
 const ChatArea: React.FC<ChatAreaProps> = ({ 
   messages, 
   onSendMessage, 
-  isLoading, 
+  isLoading,
+  isStreaming = false,
+  loadingProgress = 0,
   topic, 
   onRequestChangeTopic,
   selectedModel,
@@ -50,6 +55,13 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     if (!input.trim() || isLoading) return;
     onSendMessage(input);
     setInput('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
   };
 
   const handleTopicSubmit = (e: React.FormEvent) => {
@@ -280,10 +292,17 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 rounded-bl-none flex items-center space-x-2">
-              <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-              <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-              <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              <span className="text-xs text-slate-400 ml-2">动态思考策略中...</span>
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-sm font-medium text-slate-700">AI 正在思考</span>
+                <span className="text-xs text-slate-500">
+                  {loadingProgress > 0 && `已完成 ${loadingProgress}%`}
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -296,14 +315,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e as any);
-              }
-            }}
+            onKeyDown={handleKeyDown}
             placeholder="输入你的想法...（Shift+Enter 换行，Enter 发送）"
             disabled={isLoading}
+            name="message-input"
+            id="message-input"
             className="w-full pl-5 pr-12 py-3.5 min-h-[60px] max-h-[200px] bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base resize-y"
             rows={2}
           />

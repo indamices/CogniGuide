@@ -1,0 +1,24 @@
+@import './global.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom component styles */
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-slate-200;
+  }
+}
