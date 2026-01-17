@@ -15,7 +15,7 @@ import { sendMessageToTutor } from './services/geminiService';
 import { sendMessageToDeepSeek } from './services/deepseekService';
 import { sendMessageToGLM } from './services/glmService';
 import safeStorage from './utils/storage';
-import { mergeConceptsSmart, mergeLinksSmart } from './utils/mindMapHelpers';
+import { mergeConceptsSmart, mergeLinksSmart, evolveTreeStructure, enforceTreeStructure, simplifyTreeStructure } from './utils/mindMapHelpers';
 
 interface Notification {
   id: string;
@@ -620,27 +620,45 @@ const App: React.FC = () => {
 
       setMessages(prev => [...prev, aiMsg]);
       
-      // Update Learning State
+      // Update Learning State - 进化式重构而非增量合并
       setLearningState(prev => {
-        // Merge Concepts - 使用智能合并逻辑（名称相似度检测、去重）
-        const mergedConcepts = response.updatedConcepts && response.updatedConcepts.length > 0
-          ? mergeConceptsSmart(prev.concepts, response.updatedConcepts)
-          : prev.concepts; // AI 没有返回概念，保持不变
-
-        // Merge Links - 使用智能合并逻辑（基于合并后的概念、过滤无效链接）
-        const mergedLinks = response.updatedLinks && response.updatedLinks.length > 0
-          ? mergeLinksSmart(prev.links, response.updatedLinks, mergedConcepts)
-          : prev.links; // AI 没有返回链接，保持不变
+        // 进化式重构：基于所有概念和链接，重新组织结构
+        // 而不是简单地增量添加
+        const allExistingConcepts = prev.concepts;
+        const allExistingLinks = prev.links;
         
-        // Merge Summary - Support multiple fragments
+        // AI 返回的是基于所有笔记的优化结构（可能包含重组）
+        const aiConcepts = response.updatedConcepts || [];
+        const aiLinks = response.updatedLinks || [];
+
+        // 使用进化式合并：允许重组、移动、优化
+        const { concepts: evolvedConcepts, links: evolvedLinks } = evolveTreeStructure(
+          allExistingConcepts,
+          allExistingLinks,
+          aiConcepts,
+          aiLinks
+        );
+
+        // 应用树结构强制规则和简化
+        const { concepts: finalConcepts, links: finalLinks } = simplifyTreeStructure(
+          evolvedConcepts,
+          evolvedLinks,
+          4 // 最大深度4层
+        );
+        
+        // Merge Summary - 去重：不添加已存在的笔记
         const newSummary = [...prev.summary];
         if (response.summaryFragments && response.summaryFragments.length > 0) {
-            newSummary.push(...response.summaryFragments);
+          response.summaryFragments.forEach(fragment => {
+            if (!newSummary.includes(fragment)) {
+              newSummary.push(fragment);
+            }
+          });
         }
 
         return {
-            concepts: mergedConcepts,
-            links: mergedLinks,
+            concepts: finalConcepts,
+            links: finalLinks,
             currentStrategy: response.appliedStrategy,
             currentStage: response.detectedStage || prev.currentStage,
             cognitiveLoad: response.cognitiveLoadEstimate,

@@ -90,20 +90,86 @@ You have two distinct jobs that must happen simultaneously:
 **Format:** Notes should be complete sentences that stand alone (e.g., "The Theory of Relativity consists of Special Relativity and General Relativity.").
 
 ---
-### II. MIND MAP ARCHITECT (HIERARCHICAL)
-**Rule:** The Mind Map (\`updatedConcepts\`, \`updatedLinks\`) must visualize the **structure of the Summary Notes**.
+### II. MIND MAP ARCHITECT (EVOLUTIONARY TREE STRUCTURE)
 
-**Update Strategy:**
-- Return the complete deduplicated tree structure (all relevant concepts and links)
-- Ensure NO duplicate concepts - if a concept already exists (by name or ID), update it rather than creating a duplicate
-- Maintain strict tree hierarchy - each concept should appear only once in the tree
-- The client will handle intelligent merging, but you should avoid duplicates to ensure clean structure
+**CRITICAL PARADIGM SHIFT: EVOLUTIONARY, NOT ACCUMULATIVE**
+The Mind Map is NOT built by stacking new nodes onto existing branches. Instead, it EVOLVES by re-thinking the entire knowledge structure based on ALL accumulated notes.
 
-**Structure Requirements:**
-- Strict Tree/Directory Hierarchy (Topic -> Category -> Concept -> Detail)
-- No duplicate nodes (same concept with different IDs or names)
-- Clean, logical organization
-- Consistency: If a Note says "A consists of B and C", the Graph MUST have links A->B and A->C
+**EVOLUTIONARY BUILDING STRATEGY:**
+
+1. **Look at ALL Notes**: Analyze the complete \`summaryNotes\` array (ALL notes, not just new ones)
+2. **Re-think Structure**: Based on the full knowledge context, design an optimal hierarchical organization
+3. **Allow Reorganization**: 
+   - Concepts can move to different parents as understanding deepens
+   - Categories can be merged or split for better organization
+   - Hierarchical levels can be adjusted (a concept might become a category, or vice versa)
+   - The root topic structure can evolve as new themes emerge
+
+4. **Return Optimized Tree**: Return the BEST CURRENT structure for ALL accumulated knowledge, not an incremental addition
+
+**TREE STRUCTURE RULES:**
+
+**Hierarchy Requirements:**
+- **Single Root**: There must be ONE root concept (the main topic)
+- **One Parent Only**: Each concept has exactly ONE parent (strict tree)
+- **Depth Limit**: Maximum 4 levels (Root → L1 → L2 → L3 → L4)
+- **No Cycles**: Links must form a strict tree with no circular references
+
+**Structure Optimization:**
+- **Merge Similar Concepts**: If multiple notes mention similar concepts, merge them into one node
+- **Reorganize Categories**: As knowledge grows, reorganize categories for better logical grouping
+- **Adjust Hierarchy**: Move concepts up or down levels based on their importance and relationships
+- **Simplify Structure**: If the tree becomes too deep or fragmented, flatten or reorganize for clarity
+
+**WHAT TO RETURN:**
+
+You should return \`updatedConcepts\` and \`updatedLinks\` that represent the OPTIMAL current structure for ALL notes, not just additions:
+
+- Include ALL relevant concepts from the notes (deduplicated)
+- Include ALL relevant hierarchical links (parent-child relationships)
+- Do NOT just append new nodes - REORGANIZE if needed
+- If a concept's relationship changed, update its parent link
+- If categories need merging, do so
+
+**Example Evolution:**
+
+Initial State:
+\`\`\`
+相对论 (root)
+  ├── 狭义相对论
+  └── 广义相对论
+\`\`\`
+
+After New Notes About Time Dilation:
+\`\`\`
+相对论 (root)
+  ├── 狭义相对论
+  │   ├── 时间膨胀 (NEW - but reorganized under proper parent)
+  │   └── 长度收缩
+  └── 广义相对论
+      └── 引力场
+\`\`\`
+
+NOT:
+\`\`\`
+相对论 (root)
+  ├── 狭义相对论
+  ├── 广义相对论
+  └── 时间膨胀 (WRONG - just added at root level)
+\`\`\`
+
+**Current Context You Receive:**
+- \`currentConcepts\`: Current concepts in the graph (for reference - you may reorganize them)
+- \`currentLinks\`: Current links (for reference - you may change them)
+- \`summaryNotes\`: ALL accumulated notes - THIS IS YOUR SOURCE OF TRUTH
+
+**Your Task:**
+Based on ALL \`summaryNotes\`, design and return the optimal tree structure. This may involve:
+- Keeping existing concepts but moving them to better locations
+- Merging concepts that became redundant
+- Splitting categories that became too large
+- Creating new organizational categories as themes emerge
+- Removing outdated or incorrect concepts (if any)
 
 ---
 ### III. TEACHING DECISION ENGINE
@@ -255,18 +321,30 @@ You have two distinct jobs that must happen simultaneously:
 	    role: msg.role === MessageRole.User ? 'user' : 'assistant',
 	    content: msg.content,
 	  }));
-	  // 3. Build concise state context (aligned with Gemini style)
+	  // 3. Build state context for evolutionary structure
 	  const stateContext = `
-    [System Context]
-    Current Teaching Mode: ${teachingMode}
-    
-    [KNOWLEDGE BASE - SUMMARY NOTES]
-    (This is the source of truth for the Mind Map. Ensure the Graph visualizes THESE notes.)
-    ${JSON.stringify(summaryNotes)}
+[System Context]
+Current Teaching Mode: ${teachingMode}
 
-    [Current Graph State]
-    Nodes: ${JSON.stringify(currentConcepts.map(c => c.id))}
-  `.trim();
+[KNOWLEDGE BASE - ALL SUMMARY NOTES (YOUR SOURCE OF TRUTH)]
+These are ALL accumulated notes. Use them to design the OPTIMAL current tree structure:
+${JSON.stringify(summaryNotes, null, 2)}
+
+[CURRENT GRAPH STATE (FOR REFERENCE ONLY)]
+This is the current structure. You may REORGANIZE it based on all notes above.
+Current Concepts (${currentConcepts.length}):
+${JSON.stringify(currentConcepts.map(c => ({ id: c.id, name: c.name })), null, 2)}
+
+Current Links (${currentLinks.length}):
+${JSON.stringify(currentLinks.map(l => ({ source: l.source, target: l.target, rel: l.relationship })), null, 2)}
+
+[INSTRUCTIONS]
+Based on ALL notes above, design the OPTIMAL hierarchical tree structure.
+- You may reorganize existing concepts
+- You may merge, split, or move concepts to better locations
+- Return the COMPLETE optimized structure (all relevant concepts and links)
+- This is EVOLUTIONARY, not incremental - re-think the whole structure for optimal organization
+`.trim();
 	  // 4. 确定模型类型 (兼容原代码的 V3.2Think 和新标准 reasoner)
 	  const isReasoner = modelName.includes('reasoner') || modelName.includes('Think');
 	  const apiModelName = isReasoner ? 'deepseek-reasoner' : 'deepseek-chat';

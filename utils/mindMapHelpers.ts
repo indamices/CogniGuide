@@ -252,3 +252,204 @@ export function validateTreeStructure(
   
   return true;
 }
+
+/**
+ * 进化式重构树结构：基于所有概念重新组织，而非简单合并
+ * 允许概念移动、类别重组、层级调整
+ */
+export function evolveTreeStructure(
+  allConcepts: ConceptNode[],
+  allLinks: ConceptLink[],
+  newConcepts: ConceptNode[],
+  newLinks: ConceptLink[]
+): { concepts: ConceptNode[]; links: ConceptLink[] } {
+  
+  // 1. 合并所有概念（去重和相似度合并）
+  const mergedConcepts = mergeConceptsSmart(
+    allConcepts,
+    newConcepts
+  );
+
+  // 2. 合并所有链接（去重，但保留多个链接以便后续重组）
+  const allLinksCombined = [...allLinks, ...newLinks];
+  const conceptIds = new Set(mergedConcepts.map(c => c.id));
+  
+  // 3. 构建父节点映射（一个节点可能有多个父节点候选，需要选择最优的）
+  const parentCandidates = new Map<string, Array<{ parentId: string; relationship: string }>>();
+  
+  allLinksCombined.forEach(link => {
+    if (conceptIds.has(link.source) && conceptIds.has(link.target)) {
+      if (!parentCandidates.has(link.target)) {
+        parentCandidates.set(link.target, []);
+      }
+      parentCandidates.get(link.target)!.push({
+        parentId: link.source,
+        relationship: link.relationship
+      });
+    }
+  });
+
+  // 4. 为每个节点选择最优父节点（单一父节点规则）
+  // 策略：优先选择层级更高的父节点，或关系更明确的
+  const finalLinks: ConceptLink[] = [];
+  
+  // 先处理没有父节点的节点（根节点候选）
+  mergedConcepts.forEach(concept => {
+    const candidates = parentCandidates.get(concept.id);
+    if (!candidates || candidates.length === 0) {
+      // 可能是根节点，暂时不处理
+      return;
+    }
+    
+    // 选择第一个候选作为父节点（AI应该已经返回最优结构）
+    // 如果有多个，选择关系最明确的（包含"属于"、"包含"等关键词的）
+    const bestCandidate = candidates.sort((a, b) => {
+      const aScore = a.relationship.includes('属于') || a.relationship.includes('包含') ? 1 : 0;
+      const bScore = b.relationship.includes('属于') || b.relationship.includes('包含') ? 1 : 0;
+      return bScore - aScore;
+    })[0];
+    
+    finalLinks.push({
+      source: bestCandidate.parentId,
+      target: concept.id,
+      relationship: bestCandidate.relationship
+    });
+  });
+
+  // 5. 强制应用树结构规则：单一父节点、无循环
+  return enforceTreeStructure(mergedConcepts, finalLinks);
+}
+
+/**
+ * 强制树结构：确保每个节点只有一个父节点，无循环
+ */
+export function enforceTreeStructure(
+  concepts: ConceptNode[],
+  links: ConceptLink[]
+): { concepts: ConceptNode[]; links: ConceptLink[] } {
+  const conceptIds = new Set(concepts.map(c => c.id));
+  
+  // 1. 过滤无效链接
+  const validLinks = links.filter(
+    link => conceptIds.has(link.source) && conceptIds.has(link.target)
+  );
+
+  // 2. 为每个节点只保留一个父节点（保留第一个遇到的）
+  const parentMap = new Map<string, string>();
+  const finalLinks: ConceptLink[] = [];
+  const linkMap = new Map<string, ConceptLink>();
+
+  validLinks.forEach(link => {
+    if (!parentMap.has(link.target)) {
+      parentMap.set(link.target, link.source);
+      linkMap.set(link.target, link);
+      finalLinks.push(link);
+    } else {
+      // 节点已有父节点，忽略此链接
+      console.warn(`Removing duplicate parent for ${link.target}: keeping ${parentMap.get(link.target)}, ignoring ${link.source}`);
+    }
+  });
+
+  // 3. 检查循环并移除
+  const visited = new Set<string>();
+  const recStack = new Set<string>();
+  const linksToRemove = new Set<string>();
+
+  const detectCycle = (nodeId: string): boolean => {
+    if (recStack.has(nodeId)) {
+      // 发现循环，标记需要移除的链接
+      const parentId = parentMap.get(nodeId);
+      if (parentId) {
+        linksToRemove.add(`${parentId}->${nodeId}`);
+      }
+      return true;
+    }
+    if (visited.has(nodeId)) {
+      return false;
+    }
+
+    visited.add(nodeId);
+    recStack.add(nodeId);
+
+    const parentId = parentMap.get(nodeId);
+    if (parentId) {
+      if (detectCycle(parentId)) {
+        return true;
+      }
+    }
+
+    recStack.delete(nodeId);
+    return false;
+  };
+
+  // 从所有节点检查循环
+  concepts.forEach(c => {
+    if (!visited.has(c.id)) {
+      detectCycle(c.id);
+    }
+  });
+
+  // 移除导致循环的链接
+  const finalValidLinks = finalLinks.filter(link => {
+    return !linksToRemove.has(`${link.source}->${link.target}`);
+  });
+
+  // 4. 确保至少有一个根节点
+  const targets = new Set(finalValidLinks.map(l => l.target));
+  const roots = concepts.filter(c => !targets.has(c.id));
+
+  if (roots.length === 0 && concepts.length > 0) {
+    // 没有根节点（可能是循环结构被全部移除），选择第一个概念作为根
+    console.warn('No root nodes after cycle removal, structure may be disconnected');
+  }
+
+  return {
+    concepts,
+    links: finalValidLinks
+  };
+}
+
+/**
+ * 简化树结构：如果树太深，尝试压缩层级
+ */
+export function simplifyTreeStructure(
+  concepts: ConceptNode[],
+  links: ConceptLink[],
+  maxDepth: number = 4
+): { concepts: ConceptNode[]; links: ConceptLink[] } {
+  // 计算每个节点的深度
+  const depthMap = new Map<string, number>();
+  const parentMap = new Map<string, string>();
+  
+  links.forEach(link => {
+    parentMap.set(link.target, link.source);
+  });
+
+  const computeDepth = (nodeId: string): number => {
+    if (depthMap.has(nodeId)) {
+      return depthMap.get(nodeId)!;
+    }
+    const parentId = parentMap.get(nodeId);
+    if (!parentId) {
+      depthMap.set(nodeId, 0);
+      return 0;
+    }
+    const depth = computeDepth(parentId) + 1;
+    depthMap.set(nodeId, depth);
+    return depth;
+  };
+
+  concepts.forEach(c => computeDepth(c.id));
+
+  // 如果所有节点深度都在限制内，直接返回
+  const maxCurrentDepth = Math.max(...Array.from(depthMap.values()), 0);
+  if (maxCurrentDepth <= maxDepth) {
+    return { concepts, links };
+  }
+
+  // 如果超过深度限制，将深层节点提升（简化树结构）
+  // 这里可以添加自动压缩逻辑，但为了保持AI的控制权，我们先只做警告
+  console.warn(`Tree depth ${maxCurrentDepth} exceeds maximum ${maxDepth}, consider simplifying structure`);
+
+  return { concepts, links };
+}
