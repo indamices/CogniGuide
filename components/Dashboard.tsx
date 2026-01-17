@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { MasteryLevel, LearningState, TeachingStage } from '../types';
-import KnowledgeMapSimple from './KnowledgeMapSimple';
+import KnowledgeMap from './KnowledgeMap';
 
 interface DashboardProps {
   state: LearningState;
@@ -52,7 +52,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
               </button>
             </div>
             <div className="flex-1 relative bg-slate-50">
-              <KnowledgeMapSimple concepts={state.concepts} links={state.links} />
+              <KnowledgeMap concepts={state.concepts} links={state.links} />
             </div>
           </div>
         </div>

@@ -15,8 +15,47 @@ export function normalizeName(name: string): string {
 }
 
 /**
+ * 计算 Levenshtein 距离（编辑距离）
+ * 返回将 str1 转换为 str2 所需的最少单字符编辑（插入、删除或替换）次数
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+  const len1 = str1.length;
+  const len2 = str2.length;
+  
+  // 创建矩阵
+  const matrix: number[][] = [];
+  
+  // 初始化第一行和第一列
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j] = j;
+  }
+  
+  // 填充矩阵
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,      // 删除
+        matrix[i][j - 1] + 1,      // 插入
+        matrix[i - 1][j - 1] + cost // 替换
+      );
+    }
+  }
+  
+  return matrix[len1][len2];
+}
+
+/**
  * 计算两个名称的相似度（0-1之间）
- * 使用简单的字符匹配和编辑距离
+ * 使用改进的算法：
+ * 1. Levenshtein 距离（编辑距离）- 主要方法
+ * 2. 字符集合相似度（Jaccard 相似度）- 辅助方法
+ * 3. 包含关系检测 - 快速匹配
+ * 
+ * 相似度 = (1 - 编辑距离/最大长度) * 0.6 + 字符集合相似度 * 0.4
  */
 export function calculateNameSimilarity(name1: string, name2: string): number {
   const norm1 = normalizeName(name1);
@@ -26,23 +65,34 @@ export function calculateNameSimilarity(name1: string, name2: string): number {
   if (norm1.length === 0 && norm2.length === 0) return 1.0; // 两个空字符串相似度为1
   if (norm1.length === 0 || norm2.length === 0) return 0; // 一个为空，一个不为空，相似度为0
   
+  // 完全匹配
   if (norm1 === norm2) return 1.0;
   
-  // 如果其中一个完全包含另一个，相似度较高
+  // 快速匹配：如果其中一个完全包含另一个，相似度较高
   if (norm1.includes(norm2) || norm2.includes(norm1)) {
     const shorter = Math.min(norm1.length, norm2.length);
     const longer = Math.max(norm1.length, norm2.length);
-    return shorter / longer;
+    return Math.max(0.7, shorter / longer); // 至少0.7的相似度
   }
   
-  // 计算共同字符的比例
+  // 1. 使用 Levenshtein 距离计算相似度
+  const maxLen = Math.max(norm1.length, norm2.length);
+  const editDistance = levenshteinDistance(norm1, norm2);
+  const editSimilarity = 1 - (editDistance / maxLen);
+  
+  // 2. 计算字符集合相似度（Jaccard 相似度）
   const set1 = new Set(norm1.split(''));
   const set2 = new Set(norm2.split(''));
   const intersection = new Set([...set1].filter(x => set2.has(x)));
   const union = new Set([...set1, ...set2]);
   
-  if (union.size === 0) return 0;
-  return intersection.size / union.size;
+  const jaccardSimilarity = union.size === 0 ? 0 : intersection.size / union.size;
+  
+  // 3. 组合相似度（编辑距离60%，字符集合40%）
+  const combinedSimilarity = editSimilarity * 0.6 + jaccardSimilarity * 0.4;
+  
+  // 确保相似度在0-1之间
+  return Math.max(0, Math.min(1, combinedSimilarity));
 }
 
 /**

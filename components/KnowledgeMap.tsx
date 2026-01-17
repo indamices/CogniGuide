@@ -1,17 +1,21 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { ConceptNode, ConceptLink, MasteryLevel } from '../types';
 
 interface KnowledgeMapProps {
-  nodes: ConceptNode[];
+  concepts: ConceptNode[];
   links: ConceptLink[];
 }
 
-const KnowledgeMap: React.FC<KnowledgeMapProps> = ({ nodes, links }) => {
+/**
+ * KnowledgeMap - 力导向布局的知识图谱组件
+ * 使用 D3 的力导向布局算法，自动优化节点位置，避免重叠和连接线交叉
+ */
+const KnowledgeMap: React.FC<KnowledgeMapProps> = ({ concepts, links }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const simulationRef = useRef<d3.Simulation<ConceptNode & d3.SimulationNodeDatum, ConceptLink> | null>(null);
 
   // Update dimensions on resize
   useEffect(() => {
@@ -31,152 +35,300 @@ const KnowledgeMap: React.FC<KnowledgeMapProps> = ({ nodes, links }) => {
   }, []);
 
   useEffect(() => {
-    if (!svgRef.current || dimensions.width === 0 || dimensions.height === 0 || nodes.length === 0) return;
+    if (!svgRef.current || dimensions.width === 0 || dimensions.height === 0 || concepts.length === 0) return;
+
+    // 清理之前的模拟
+    if (simulationRef.current) {
+      simulationRef.current.stop();
+      simulationRef.current = null;
+    }
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove(); // Clear previous render
 
     const width = dimensions.width;
     const height = dimensions.height;
-    const margin = { top: 20, right: 120, bottom: 20, left: 120 };
+    const margin = { top: 20, right: 20, bottom: 80, left: 20 };
 
-    // 1. Identify Roots (Nodes with no incoming links)
-    const targets = new Set(links.map(l => l.target));
-    const roots = nodes.filter(n => !targets.has(n.id));
+    const adjustedWidth = width - margin.left - margin.right;
+    const adjustedHeight = height - margin.top - margin.bottom;
 
-    // 2. Build Hierarchy Data
-    const adjacency: Record<string, string[]> = {};
-    links.forEach(l => {
-        if (!adjacency[l.source]) adjacency[l.source] = [];
-        adjacency[l.source].push(l.target);
-    });
+    // 创建力导向模拟
+    const simulation = d3.forceSimulation<ConceptNode & d3.SimulationNodeDatum>(concepts)
+      .force("link", d3.forceLink<ConceptNode & d3.SimulationNodeDatum, ConceptLink>(links)
+        .id((d: ConceptNode) => d.id)
+        .distance((d: any) => {
+          // 根据掌握程度调整连接距离
+          const source = d.source as ConceptNode;
+          const target = d.target as ConceptNode;
+          let baseDistance = 150;
+          
+          // 如果节点掌握程度高，距离可以更近
+          if (source.mastery === MasteryLevel.Expert || target.mastery === MasteryLevel.Expert) {
+            baseDistance = 120;
+          }
+          
+          return baseDistance;
+        })
+        .strength(0.5) // 连接强度
+      )
+      .force("charge", d3.forceManyBody()
+        .strength((d: any) => {
+          // 根据节点掌握程度调整排斥力
+          const node = d as ConceptNode;
+          switch (node.mastery) {
+            case MasteryLevel.Expert:
+              return -800; // 专家节点排斥力更强，占据更多空间
+            case MasteryLevel.Competent:
+              return -600;
+            case MasteryLevel.Novice:
+              return -400;
+            default:
+              return -500;
+          }
+        })
+      )
+      .force("center", d3.forceCenter(adjustedWidth / 2, adjustedHeight / 2))
+      .force("collision", d3.forceCollide()
+        .radius((d: any) => {
+          // 根据节点名称长度调整碰撞半径
+          const node = d as ConceptNode;
+          const nameLength = node.name.length;
+          return Math.max(60, nameLength * 5); // 最小60px，根据文字长度增加
+        })
+        .strength(0.8)
+      );
 
-    const buildHierarchy = (id: string, visited: Set<string>): any => {
-        const node = nodes.find(n => n.id === id);
-        // Fallback for virtual root children that might be real nodes
-        if (!node && id !== 'virtual_root') return null;
-
-        visited.add(id);
-        const childrenIds = adjacency[id] || [];
-        // 修复：直接传递同一个 Set，而不是创建新的 Set，以便正确检测循环
-        const children = childrenIds
-            .filter(childId => !visited.has(childId))
-            .map(childId => buildHierarchy(childId, visited))
-            .filter(Boolean); // Remove nulls
-
-        return {
-            name: node ? node.name : "知识根节点",
-            mastery: node ? node.mastery : MasteryLevel.Expert,
-            description: node ? node.description : "",
-            isVirtual: !node,
-            children: children.length > 0 ? children : undefined
-        };
-    };
-
-    let hierarchyData;
+    // 识别根节点（没有入边的节点）
+    const rootNodes = concepts.filter(node => 
+      !links.some(link => link.target === node.id)
+    );
     
-    // If multiple roots exist, create a Virtual Root to hold them
-    if (roots.length > 1 || (roots.length === 0 && nodes.length > 0)) {
-        // If no explicit roots found (cycles?), just pick the first one.
-        // If multiple roots, group them.
-        const rootNodes = roots.length > 0 ? roots : [nodes[0]];
-        
-        // Manually populate adjacency for virtual root
-        adjacency['virtual_root'] = rootNodes.map(n => n.id);
-        
-        hierarchyData = buildHierarchy('virtual_root', new Set());
-    } else {
-        hierarchyData = buildHierarchy(roots[0].id, new Set());
+    // 如果有根节点，添加径向力，让根节点靠近中心
+    if (rootNodes.length > 0 && rootNodes.length <= 3) {
+      const radialForce = d3.forceRadial<ConceptNode & d3.SimulationNodeDatum>(
+        (d: ConceptNode) => {
+          // 根节点更靠近中心
+          if (rootNodes.some(r => r.id === d.id)) {
+            return Math.min(adjustedWidth, adjustedHeight) * 0.15;
+          }
+          return Math.min(adjustedWidth, adjustedHeight) * 0.35;
+        },
+        adjustedWidth / 2,
+        adjustedHeight / 2
+      );
+      radialForce.strength(0.15); // 较弱的径向力，不强制
+      simulation.force("radial", radialForce);
     }
 
-    if (!hierarchyData) return;
-
-    const root = d3.hierarchy(hierarchyData);
-
-    // Tree layout
-    const treeLayout = d3.tree()
-        .nodeSize([60, 220]) // [height, width] of node space
-        .separation((a, b) => (a.parent === b.parent ? 1.2 : 1.5));
-    
-    treeLayout(root);
-
     const g = svg.append("g")
-        .attr("transform", `translate(${margin.left},${height/2})`);
+      .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // Links (Curved lines)
-    g.selectAll(".link")
-        .data(root.links())
-        .enter().append("path")
-        .attr("class", "link")
-        .attr("fill", "none")
-        .attr("stroke", "#cbd5e1")
-        .attr("stroke-width", 2)
-        .attr("d", d3.linkHorizontal()
-            .x((d: any) => d.y)
-            .y((d: any) => d.x) as any
-        );
+    // 添加箭头标记定义
+    const defs = svg.append("defs");
+    defs.append("marker")
+      .attr("id", "arrowhead")
+      .attr("viewBox", "0 0 10 10")
+      .attr("refX", 8)
+      .attr("refY", 5)
+      .attr("markerWidth", 6)
+      .attr("markerHeight", 6)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M 0 0 L 10 5 L 0 10 z")
+      .attr("fill", "#94a3b8")
+      .attr("opacity", 0.4);
 
-    // Nodes
-    const node = g.selectAll(".node")
-        .data(root.descendants())
-        .enter().append("g")
-        .attr("class", "node")
-        .attr("transform", (d: any) => `translate(${d.y},${d.x})`);
+    // 绘制连接线（使用曲线路径）
+    const link = g.append("g")
+      .attr("class", "links")
+      .selectAll<SVGPathElement, ConceptLink>("path")
+      .data(links)
+      .enter()
+      .append("path")
+      .attr("class", "link")
+      .attr("stroke", "#94a3b8")
+      .attr("stroke-width", 2)
+      .attr("stroke-opacity", 0.4)
+      .attr("fill", "none")
+      .attr("marker-end", "url(#arrowhead)");
 
-    // Use ForeignObject to render HTML Divs
+    // 绘制节点组
+    const node = g.append("g")
+      .attr("class", "nodes")
+      .selectAll<SVGGElement, ConceptNode>("g")
+      .data(concepts)
+      .enter()
+      .append("g")
+      .attr("class", "node")
+      .call(d3.drag<SVGGElement, ConceptNode>()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended)
+      );
+
+    // 节点背景圆（用于更好的视觉层次）
+    node.append("circle")
+      .attr("r", (d) => {
+        const nameLength = d.name.length;
+        return Math.max(25, nameLength * 3);
+      })
+      .attr("fill", (d) => {
+        switch (d.mastery) {
+          case MasteryLevel.Expert:
+            return "#10b981";
+          case MasteryLevel.Competent:
+            return "#6366f1";
+          case MasteryLevel.Novice:
+            return "#f59e0b";
+          default:
+            return "#94a3b8";
+        }
+      })
+      .attr("fill-opacity", 0.2)
+      .attr("stroke", (d) => {
+        switch (d.mastery) {
+          case MasteryLevel.Expert:
+            return "#10b981";
+          case MasteryLevel.Competent:
+            return "#6366f1";
+          case MasteryLevel.Novice:
+            return "#f59e0b";
+          default:
+            return "#94a3b8";
+        }
+      })
+      .attr("stroke-width", 2);
+
+    // 节点文本（使用 ForeignObject 支持 HTML）
     node.append("foreignObject")
-        .attr("width", 180)
-        .attr("height", 46)
-        .attr("x", -10)
-        .attr("y", -23)
-        .html((d: any) => {
-             if (d.data.isVirtual) {
-                 return `
-                    <div class="w-full h-full flex items-center justify-center">
-                        <div class="w-3 h-3 bg-slate-300 rounded-full"></div>
-                    </div>
-                 `;
-             }
+      .attr("width", (d) => Math.max(100, d.name.length * 7))
+      .attr("height", 45)
+      .attr("x", (d) => -Math.max(50, d.name.length * 3.5))
+      .attr("y", -22.5)
+      .html((d) => {
+        const masteryColors: Record<string, { bg: string; text: string; border: string }> = {
+          Expert: { bg: "bg-emerald-50", text: "text-emerald-800", border: "border-emerald-300" },
+          Competent: { bg: "bg-blue-50", text: "text-blue-800", border: "border-blue-300" },
+          Novice: { bg: "bg-amber-50", text: "text-amber-800", border: "border-amber-300" },
+          Unknown: { bg: "bg-slate-50", text: "text-slate-800", border: "border-slate-300" },
+        };
+        const colors = masteryColors[d.mastery] || masteryColors.Unknown;
 
-             let colorClass = "bg-white border-slate-200 text-slate-700";
-             if (d.data.mastery === MasteryLevel.Expert) colorClass = "bg-emerald-50 border-emerald-200 text-emerald-800";
-             if (d.data.mastery === MasteryLevel.Competent) colorClass = "bg-blue-50 border-blue-200 text-blue-800";
-             if (d.data.mastery === MasteryLevel.Novice) colorClass = "bg-amber-50 border-amber-200 text-amber-800";
+        return `
+          <div class="w-full h-full flex items-center justify-center px-1 py-0.5">
+            <div class="${colors.bg} ${colors.text} ${colors.border} border-2 rounded-lg px-2 py-1 shadow-sm text-xs font-medium text-center whitespace-normal break-words leading-tight" title="${d.description || d.name}">
+              ${d.name}
+            </div>
+          </div>
+        `;
+      });
 
-             return `
-                <div class="w-full h-full flex items-center px-3 py-1 rounded-lg border shadow-sm ${colorClass} overflow-hidden transition-all hover:scale-105" title="${d.data.description || ''}">
-                    <div class="font-medium text-sm truncate w-full">${d.data.name}</div>
-                </div>
-             `;
-        });
+    // 更新函数：在每次模拟 tick 时更新位置
+    function ticked() {
+      // 更新连接线路径（使用二次贝塞尔曲线）
+      link.attr("d", (d: any) => {
+        const source = d.source as ConceptNode & { x: number; y: number };
+        const target = d.target as ConceptNode & { x: number; y: number };
+        
+        if (!source || !target || source.x === undefined || target.x === undefined) {
+          return "";
+        }
 
-    // Zoom behavior
-    const zoom = d3.zoom()
-        .scaleExtent([0.1, 2])
-        .on("zoom", (event) => {
-            g.attr("transform", event.transform);
-        });
+        // 使用二次贝塞尔曲线，更平滑
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const dr = Math.sqrt(dx * dx + dy * dy);
+        
+        // 计算控制点，使曲线更平滑
+        const curvature = 0.3;
+        const cx = (source.x + target.x) / 2 + curvature * dy;
+        const cy = (source.y + target.y) / 2 - curvature * dx;
+        
+        return `M${source.x},${source.y}Q${cx},${cy} ${target.x},${target.y}`;
+      });
 
-    svg.call(zoom as any);
-    
-    // Center the tree initially based on root position
-    // If virtual root, we might want to shift left a bit so real nodes are visible
-    const initialTransform = d3.zoomIdentity.translate(80, height/2);
-    svg.call(zoom.transform as any, initialTransform);
+      // 更新节点位置，确保在画布内
+      node.attr("transform", (d: any) => {
+        // 确保节点在画布内
+        const x = Math.max(50, Math.min(adjustedWidth - 50, d.x || adjustedWidth / 2));
+        const y = Math.max(50, Math.min(adjustedHeight - 50, d.y || adjustedHeight / 2));
+        return `translate(${x},${y})`;
+      });
+    }
 
-  }, [nodes, links, dimensions]);
+    // 拖拽函数
+    function dragstarted(event: d3.D3DragEvent<SVGGElement, ConceptNode, any>, d: any) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    }
 
-  if (nodes.length === 0) {
+    function dragged(event: d3.D3DragEvent<SVGGElement, ConceptNode, any>, d: any) {
+      d.fx = event.x;
+      d.fy = event.y;
+    }
+
+    function dragended(event: d3.D3DragEvent<SVGGElement, ConceptNode, any>, d: any) {
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null;
+      d.fy = null;
+    }
+
+    // 绑定 tick 事件
+    simulation.on("tick", ticked);
+
+    // 调整 alpha 衰减，让布局更稳定
+    simulation.alphaDecay(0.02);
+    simulation.velocityDecay(0.4);
+
+    // 保存 simulation 引用以便清理
+    simulationRef.current = simulation;
+
+    return () => {
+      if (simulationRef.current) {
+        simulationRef.current.stop();
+        simulationRef.current = null;
+      }
+    };
+  }, [concepts, links, dimensions]);
+
+  if (concepts.length === 0) {
     return (
       <div ref={containerRef} className="w-full h-full flex items-center justify-center text-slate-400 bg-slate-50/50 rounded-lg border-2 border-dashed border-slate-200">
-        <p>暂无逻辑结构</p>
+        <p>暂无知识图谱</p>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-slate-50 rounded-lg overflow-hidden border border-slate-100 shadow-inner cursor-grab active:cursor-grabbing">
-      <svg ref={svgRef} width="100%" height="100%" className="touch-none" />
+    <div ref={containerRef} className="w-full h-full bg-gradient-to-br from-slate-50 to-indigo-50/20 rounded-lg overflow-hidden border border-slate-100 shadow-inner relative">
+      <svg ref={svgRef} width="100%" height="100%" className="cursor-grab active:cursor-grabbing">
+        {/* SVG 内容由 D3 动态生成 */}
+      </svg>
+      
+      {/* 图例 */}
+      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-slate-200 z-10">
+        <p className="text-xs font-semibold text-slate-700 mb-2">掌握程度</p>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+            <span className="text-xs text-slate-600">专家</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+            <span className="text-xs text-slate-600">熟练</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+            <span className="text-xs text-slate-600">新手</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-slate-400"></div>
+            <span className="text-xs text-slate-600">未知</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

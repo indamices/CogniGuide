@@ -40,6 +40,9 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleInput, setEditTitleInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputHistoryRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number>(-1);
 
   // 移除自动滚动，改为用户手动控制
   // useEffect(() => {
@@ -50,17 +53,152 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     setEditTitleInput(sessionTitle || topic || '');
   }, [sessionTitle, topic]);
 
+  // 加载输入历史记录
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('cogniguide_input_history');
+      if (saved) {
+        inputHistoryRef.current = JSON.parse(saved);
+      }
+    } catch (err) {
+      console.warn('无法加载输入历史:', err);
+    }
+  }, []);
+
+  // 自动调整 textarea 高度
+  const adjustTextareaHeight = (textarea: HTMLTextAreaElement) => {
+    textarea.style.height = 'auto';
+    const scrollHeight = textarea.scrollHeight;
+    const minHeight = 60;
+    const maxHeight = 200;
+    textarea.style.height = `${Math.min(Math.max(scrollHeight, minHeight), maxHeight)}px`;
+  };
+
+  // 处理输入变化，自动调整高度
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    adjustTextareaHeight(e.target);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
     onSendMessage(input);
+    
+    // 保存到历史记录（最多保存50条）
+    const trimmedInput = input.trim();
+    if (trimmedInput && !inputHistoryRef.current.includes(trimmedInput)) {
+      inputHistoryRef.current.unshift(trimmedInput);
+      if (inputHistoryRef.current.length > 50) {
+        inputHistoryRef.current = inputHistoryRef.current.slice(0, 50);
+      }
+      try {
+        localStorage.setItem('cogniguide_input_history', JSON.stringify(inputHistoryRef.current));
+      } catch (err) {
+        console.warn('无法保存输入历史:', err);
+      }
+    }
+    
     setInput('');
+    historyIndexRef.current = -1;
+    
+    // 重置 textarea 高度
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter 发送（无 Shift）
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e as any);
+      return;
+    }
+
+    // 快捷键：Ctrl+K 或 Cmd+K 清空输入
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      setInput('');
+      historyIndexRef.current = -1;
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      return;
+    }
+
+    // 历史记录导航：上箭头
+    if (e.key === 'ArrowUp' && !e.shiftKey && inputHistoryRef.current.length > 0) {
+      const textarea = e.currentTarget;
+      const cursorPos = textarea.selectionStart;
+      
+      // 如果光标不在第一行，正常的上箭头行为
+      const textBeforeCursor = textarea.value.substring(0, cursorPos);
+      if (textBeforeCursor.includes('\n') || cursorPos > 0) {
+        return; // 允许正常的上箭头行为
+      }
+
+      // 如果光标在第一行开头，加载历史记录
+      if (cursorPos === 0 && textarea.value === '') {
+        e.preventDefault();
+        if (historyIndexRef.current < inputHistoryRef.current.length - 1) {
+          historyIndexRef.current++;
+          const historyItem = inputHistoryRef.current[historyIndexRef.current];
+          setInput(historyItem);
+          setTimeout(() => {
+            textarea.selectionStart = textarea.selectionEnd = historyItem.length;
+            adjustTextareaHeight(textarea);
+          }, 0);
+        }
+        return;
+      }
+      
+      // 如果输入框不为空，且光标在第一行开头
+      if (cursorPos === 0) {
+        e.preventDefault();
+        if (historyIndexRef.current < inputHistoryRef.current.length - 1) {
+          historyIndexRef.current++;
+          const historyItem = inputHistoryRef.current[historyIndexRef.current];
+          setInput(historyItem);
+          setTimeout(() => {
+            textarea.selectionStart = textarea.selectionEnd = historyItem.length;
+            adjustTextareaHeight(textarea);
+          }, 0);
+        }
+        return;
+      }
+    }
+
+    // 历史记录导航：下箭头
+    if (e.key === 'ArrowDown' && !e.shiftKey) {
+      const textarea = e.currentTarget;
+      const cursorPos = textarea.selectionStart;
+      const textAfterCursor = textarea.value.substring(cursorPos);
+      
+      // 如果光标不在最后一行，正常的下箭头行为
+      if (textAfterCursor.includes('\n') || cursorPos < textarea.value.length) {
+        return; // 允许正常的下箭头行为
+      }
+
+      // 如果光标在最后，加载历史记录
+      if (historyIndexRef.current > 0) {
+        e.preventDefault();
+        historyIndexRef.current--;
+        const historyItem = inputHistoryRef.current[historyIndexRef.current];
+        setInput(historyItem);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = historyItem.length;
+          adjustTextareaHeight(textarea);
+        }, 0);
+      } else if (historyIndexRef.current === 0) {
+        e.preventDefault();
+        historyIndexRef.current = -1;
+        setInput('');
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+      }
+      return;
     }
   };
 
@@ -138,15 +276,27 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             <label className="block text-sm font-medium text-slate-700 mb-2">今天探索什么知识？</label>
             <div className="flex gap-2">
                 <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  adjustTextareaHeight(e.target);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     handleTopicSubmit(e as any);
                   }
+                  // Ctrl+K 清空
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    setInput('');
+                    if (textareaRef.current) {
+                      textareaRef.current.style.height = 'auto';
+                    }
+                  }
                 }}
-                placeholder="例如：相对论, 印象派, 递归算法...&#10;（Shift+Enter 换行，Enter 发送）"
+                placeholder="例如：相对论, 印象派, 递归算法...&#10;（Shift+Enter 换行，Enter 发送，Ctrl+K 清空）"
                 className="flex-1 px-4 py-3 min-h-[120px] border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow resize-y text-sm md:text-base"
                 autoFocus
                 rows={4}
@@ -315,14 +465,15 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       <div className="p-4 bg-white border-t border-slate-100">
         <form onSubmit={handleSubmit} className="relative">
           <textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="输入你的想法...（Shift+Enter 换行，Enter 发送）"
+            placeholder="输入你的想法...（Shift+Enter 换行，Enter 发送，↑↓ 历史，Ctrl+K 清空）"
             disabled={isLoading}
             name="message-input"
             id="message-input"
-            className="w-full pl-5 pr-12 py-3.5 min-h-[60px] max-h-[200px] bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base resize-y"
+            className="w-full pl-5 pr-12 py-3.5 min-h-[60px] max-h-[200px] bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base resize-none overflow-y-auto"
             rows={2}
           />
           <button
