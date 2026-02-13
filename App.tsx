@@ -21,6 +21,7 @@ import { sendMessageToTutor } from './services/geminiService';
 import { sendMessageToDeepSeek } from './services/deepseekService';
 import { sendMessageToGLM } from './services/glmService';
 import { sendMessageToMiniMax } from './services/minimaxService';
+import { sendMessageToKIMI } from './services/kimiService';
 import safeStorage from './utils/storage';
 import { mergeConceptsSmart, mergeLinksSmart, evolveTreeStructure, enforceTreeStructure, simplifyTreeStructure } from './utils/mindMapHelpers';
 import { Recommendation } from './utils/recommendationEngine';
@@ -70,7 +71,8 @@ const App: React.FC = () => {
   const [glmKey, setGlmKey] = useState<string>('');
   const [minimaxKey, setMiniMaxKey] = useState<string>('');
   const [minimaxGroupId, setMiniMaxGroupId] = useState<string>('');
-  
+  const [kimiKey, setKIMIKey] = useState<string>('');
+
   // Session State
   const [sessions, setSessions] = useState<SavedSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -185,6 +187,11 @@ const App: React.FC = () => {
     const storedMiniMaxGroupId = safeStorage.getItem('minimax_group_id');
     if (storedMiniMaxGroupId) {
         setMiniMaxGroupId(storedMiniMaxGroupId);
+    }
+
+    const storedKIMIKey = safeStorage.getItem('kimi_api_key');
+    if (storedKIMIKey) {
+        setKIMIKey(storedKIMIKey);
     }
 
     // Load review cards
@@ -311,6 +318,11 @@ const App: React.FC = () => {
   const saveMiniMaxGroupId = (groupId: string) => {
     setMiniMaxGroupId(groupId);
     safeStorage.setItem('minimax_group_id', groupId);
+  };
+
+  const saveKIMIKey = (key: string) => {
+    setKIMIKey(key);
+    safeStorage.setItem('kimi_api_key', key);
   };
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
@@ -622,8 +634,25 @@ const App: React.FC = () => {
         // M2 系列（旗舰模型）
         'MiniMax-M2.5', 'MiniMax-M2.5-lightning', 'MiniMax-M2.1', 'MiniMax-M2.1-ning'
       ];
+      const KIMI_MODELS = [
+        'kimi-1.5', 'kimi-1.5-32k', 'kimi-1.5-128k', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi', 'kimi-32k', 'kimi-128k'
+      ];
 
-      if (MINIMAX_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
+      if (KIMI_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
+          // KIMI models
+          if (!kimiKey) {
+              throw new Error("请先在上方输入框中设置 KIMI API Key");
+          }
+          response = await sendMessageToKIMI(
+            fullHistory,
+            currentLearningState.concepts,
+            currentLearningState.links,
+            currentLearningState.summary,
+            kimiKey,
+            currentModel,
+            currentMode
+          );
+      } else if (MINIMAX_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
           // MiniMax models
           if (!minimaxKey) {
               throw new Error("请先在上方输入框中设置 MiniMax API Key");
@@ -675,7 +704,7 @@ const App: React.FC = () => {
             currentLearningState.summary,
             apiKey,
             currentModel,
-            currentMode 
+            currentMode
           );
       }
 
@@ -995,11 +1024,13 @@ ${mapSection}
         glmKey={glmKey}
         minimaxKey={minimaxKey}
         minimaxGroupId={minimaxGroupId}
+        kimiKey={kimiKey}
         onSaveGeminiKey={saveGeminiKey}
         onSaveDeepSeekKey={saveDeepSeekKey}
         onSaveGLMKey={saveGLMKey}
         onSaveMiniMaxKey={saveMiniMaxKey}
         onSaveMiniMaxGroupId={saveMiniMaxGroupId}
+        onSaveKIMIKey={saveKIMIKey}
       />
 
       {/* Keyboard Navigation */}

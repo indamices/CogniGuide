@@ -18,7 +18,7 @@
 
 ### 核心特性
 
-- **多AI模型支持** - 集成 Gemini、DeepSeek、GLM-4.7、MiniMax 等多个AI服务
+- **多AI模型支持** - 集成 Gemini、DeepSeek、GLM-4.7、MiniMax、KIMI 等多个AI服务
 - **动态教学模式** - 支持自动适应、苏格拉底式、叙事讲解、讲授式四种教学模式
 - **知识图谱可视化** - 自动构建思维导图，帮助理解知识结构
 - **间隔重复学习** - 内置闪卡系统，科学记忆管理
@@ -73,6 +73,9 @@ VITE_GLM_API_KEY=your_glm_api_key
 # MiniMax
 VITE_MINIMAX_API_KEY=your_minimax_api_key
 VITE_MINIMAX_GROUP_ID=your_group_id  # 可选
+
+# KIMI (月之暗面)
+VITE_KIMI_API_KEY=your_kimi_api_key
 ```
 
 #### 获取 API Key
@@ -81,6 +84,7 @@ VITE_MINIMAX_GROUP_ID=your_group_id  # 可选
 - **DeepSeek**: [DeepSeek Platform](https://platform.deepseek.com/)
 - **GLM**: [智谱AI开放平台](https://open.bigmodel.cn/)
 - **MiniMax**: [MiniMax 开放平台](https://www.minimaxi.com/)
+- **KIMI**: [KIMI 开放平台](https://platform.moonshot.cn/)
 
 ### 运行
 
@@ -202,5 +206,5 @@ CogniGuide/
 
 <div align="center">
   <p>用 ❤️ 和 AI 打造</p>
-  <p>Powered by Claude, Gemini, DeepSeek, GLM & MiniMax</p>
+  <p>Powered by Claude, Gemini, DeepSeek, GLM, MiniMax & KIMI</p>
 </div>

@@ -8,11 +8,13 @@ interface APIKeyManagerProps {
   glmKey: string;
   minimaxKey: string;
   minimaxGroupId: string;
+  kimiKey: string;
   onSaveGeminiKey: (key: string) => void;
   onSaveDeepSeekKey: (key: string) => void;
   onSaveGLMKey: (key: string) => void;
   onSaveMiniMaxKey: (key: string) => void;
   onSaveMiniMaxGroupId: (groupId: string) => void;
+  onSaveKIMIKey: (key: string) => void;
 }
 
 interface KeyInfo {
@@ -30,11 +32,13 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
   glmKey,
   minimaxKey,
   minimaxGroupId,
+  kimiKey,
   onSaveGeminiKey,
   onSaveDeepSeekKey,
   onSaveGLMKey,
   onSaveMiniMaxKey,
   onSaveMiniMaxGroupId,
+  onSaveKIMIKey,
 }) => {
   const [geminiInfo, setGeminiInfo] = useState<KeyInfo>({
     key: geminiKey,
@@ -71,6 +75,13 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
     editValue: minimaxGroupId || '',
   });
 
+  const [kimiInfo, setKIMIInfo] = useState<KeyInfo>({
+    key: kimiKey,
+    isVisible: false,
+    isEditing: false,
+    editValue: kimiKey,
+  });
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{
     provider: string;
     show: boolean;
@@ -83,7 +94,8 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
     setGLMInfo(prev => ({ ...prev, key: glmKey, editValue: glmKey }));
     setMiniMaxInfo(prev => ({ ...prev, key: minimaxKey, editValue: minimaxKey }));
     setMiniMaxGroupIdInfo(prev => ({ ...prev, key: minimaxGroupId || '', editValue: minimaxGroupId || '' }));
-  }, [geminiKey, deepSeekKey, glmKey, minimaxKey, minimaxGroupId]);
+    setKIMIInfo(prev => ({ ...prev, key: kimiKey, editValue: kimiKey }));
+  }, [geminiKey, deepSeekKey, glmKey, minimaxKey, minimaxGroupId, kimiKey]);
 
   if (!isOpen) return null;
 
@@ -122,6 +134,10 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
         onSaveMiniMaxGroupId(trimmedValue);
         setMiniMaxGroupIdInfo(prev => ({ ...prev, key: trimmedValue, isEditing: false, editValue: trimmedValue }));
         break;
+      case 'kimi':
+        onSaveKIMIKey(trimmedValue);
+        setKIMIInfo(prev => ({ ...prev, key: trimmedValue, isEditing: false, editValue: trimmedValue }));
+        break;
     }
   };
 
@@ -142,6 +158,9 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
       case 'minimax-groupid':
         setMiniMaxGroupIdInfo(prev => ({ ...prev, isEditing: true, editValue: prev.key }));
         break;
+      case 'kimi':
+        setKIMIInfo(prev => ({ ...prev, isEditing: true, editValue: prev.key }));
+        break;
     }
   };
 
@@ -161,6 +180,9 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
         break;
       case 'minimax-groupid':
         setMiniMaxGroupIdInfo(prev => ({ ...prev, isEditing: false, editValue: prev.key }));
+        break;
+      case 'kimi':
+        setKIMIInfo(prev => ({ ...prev, isEditing: false, editValue: prev.key }));
         break;
     }
   };
@@ -187,6 +209,10 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
         onSaveMiniMaxGroupId('');
         setMiniMaxGroupIdInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
         break;
+      case 'kimi':
+        onSaveKIMIKey('');
+        setKIMIInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
+        break;
     }
     setShowDeleteConfirm({ provider: '', show: false });
   };
@@ -197,11 +223,13 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
     onSaveGLMKey('');
     onSaveMiniMaxKey('');
     onSaveMiniMaxGroupId('');
+    onSaveKIMIKey('');
     setGeminiInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
     setDeepSeekInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
     setGLMInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
     setMiniMaxInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
     setMiniMaxGroupIdInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
+    setKIMIInfo({ key: '', isVisible: false, isEditing: false, editValue: '' });
     setShowDeleteConfirm({ provider: '', show: false });
   };
 
@@ -411,8 +439,17 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
             setMiniMaxGroupIdInfo
           )}
 
+          {/* KIMI Section */}
+          {renderKeySection(
+            'kimi',
+            'KIMI (月之暗面)',
+            '用于 KIMI-1.5 / KIMI-32K / KIMI-128K 等模型',
+            kimiInfo,
+            setKIMIInfo
+          )}
+
           {/* Clear All Section */}
-          {(geminiKey || deepSeekKey || glmKey || minimaxKey) && (
+          {(geminiKey || deepSeekKey || glmKey || minimaxKey || kimiKey) && (
             <div className="pt-4 border-t border-slate-200">
               <button
                 onClick={() => setShowDeleteConfirm({ provider: 'all', show: true })}
@@ -458,6 +495,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({
                 <li>• <strong>DeepSeek:</strong> 访问 <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">DeepSeek Platform</a> 注册并获取 API Key</li>
                 <li>• <strong>GLM:</strong> 访问 <a href="https://open.bigmodel.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">智谱AI开放平台</a> 获取 API Key</li>
                 <li>• <strong>MiniMax:</strong> 访问 <a href="https://www.minimaxi.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">MiniMax 开放平台</a> 获取 API Key</li>
+                <li>• <strong>KIMI:</strong> 访问 <a href="https://platform.moonshot.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">KIMI 开放平台</a> 获取 API Key</li>
                 <li className="text-slate-500 mt-1">支持 abab6.5s (245K超长文)、abab6.5g (通用)、abab5.5s (经济) 等模型</li>
               </ul>
             </div>
