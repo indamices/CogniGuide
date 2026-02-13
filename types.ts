@@ -79,3 +79,124 @@ export interface SavedSession {
   lastModified: number;
   model: string;
 }
+
+// Spaced Repetition System Types
+export type QualityRating = 1 | 2 | 3 | 4 | 5;
+
+export interface ReviewCard {
+  id: string;
+  question: string;
+  answer: string;
+  sessionId: string; // 关联的学习会话
+  conceptId?: string; // 可选：关联的知识节点
+
+  // SuperMemo-2 算法参数
+  easeFactor: number; // EF (1.3 - 2.5)
+  interval: number; // 距离上次复习的天数
+  repetitions: number; // 成功复习次数
+
+  // 时间调度
+  nextReviewDate: number; // Unix timestamp
+  lastReviewDate?: number;
+  createdDate: number;
+
+  // 元数据
+  priority: 'low' | 'medium' | 'high';
+  tags: string[];
+  reviewHistory: ReviewRecord[];
+}
+
+export interface ReviewRecord {
+  date: number;
+  quality: QualityRating;
+  timeTaken: number; // 毫秒
+}
+
+export interface ReviewStatistics {
+  totalCards: number;
+  dueCards: number;
+  reviewedToday: number;
+  averageQuality: number;
+  averageEaseFactor: number;
+  memoryStrengthDistribution: {
+    weak: number; // 0-40%
+    medium: number; // 41-70%
+    strong: number; // 71-100%
+  };
+}
+
+// Code Sandbox Types
+export enum CodeLanguage {
+  JavaScript = 'javascript',
+  TypeScript = 'typescript',
+  Python = 'python',
+  HTML = 'html',
+  CSS = 'css',
+}
+
+export enum ConsoleLogLevel {
+  Log = 'log',
+  Warn = 'warn',
+  Error = 'error',
+  Info = 'info',
+}
+
+export interface ConsoleMessage {
+  id: string;
+  level: ConsoleLogLevel;
+  content: string;
+  timestamp: number;
+  source?: string;
+}
+
+export interface CodeExecutionResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+  executionTime?: number;
+}
+
+export interface CodeSandboxTab {
+  id: string;
+  title: string;
+  language: CodeLanguage;
+  code: string;
+}
+
+export interface CodeSandboxState {
+  tabs: CodeSandboxTab[];
+  activeTabId: string;
+  consoleMessages: ConsoleMessage[];
+  isRunning: boolean;
+  htmlPreview?: string;
+}
+
+// Voice Interaction Types
+export interface VoiceConfig {
+  rate: number;        // 语速 (0.5-2)
+  pitch: number;       // 音调 (0-2)
+  volume: number;      // 音量 (0-1)
+  voiceURI?: string;   // 选中的声音
+}
+
+export interface VoiceState {
+  isListening: boolean;
+  isSpeaking: boolean;
+  isPaused: boolean;
+  transcript: string;
+  interimTranscript: string;
+  currentSpeakingMessageId: string | null;
+  error: string | null;
+}
+
+export type VoicePermissionStatus = 'granted' | 'denied' | 'prompt' | 'unsupported';
+
+export interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+export interface SpeechRecognitionError {
+  error: string;
+  message: string;
+}

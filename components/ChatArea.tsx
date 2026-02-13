@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChatMessage, MessageRole, TeachingMode } from '../types';
 import MessageContent from './MessageContent';
 import EmptyState from './EmptyState';
+import useSpeech from '../hooks/useSpeech';
+import VoiceInputButton from './VoiceInputButton';
+import VoiceControlPanel from './VoiceControlPanel';
 
 interface ChatAreaProps {
   messages: ChatMessage[];
@@ -20,13 +23,13 @@ interface ChatAreaProps {
   onUpdateSessionTitle: (newTitle: string) => void;
 }
 
-const ChatArea: React.FC<ChatAreaProps> = ({ 
-  messages, 
-  onSendMessage, 
+const ChatArea: React.FC<ChatAreaProps> = ({
+  messages,
+  onSendMessage,
   isLoading,
   isStreaming = false,
   loadingProgress = 0,
-  topic, 
+  topic,
   onRequestChangeTopic,
   selectedModel,
   onModelChange,
@@ -39,10 +42,34 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [input, setInput] = useState('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleInput, setEditTitleInput] = useState('');
+  const [showVoicePanel, setShowVoicePanel] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHistoryRef = useRef<string[]>([]);
   const historyIndexRef = useRef<number>(-1);
+
+  // 语音功能
+  const {
+    isListening,
+    transcript,
+    interimTranscript,
+    startListening,
+    stopListening,
+    resetTranscript,
+    browserSupportsSpeechRecognition,
+    browserSupportsSpeechSynthesis,
+    voiceConfig,
+    updateVoiceConfig,
+    availableVoices,
+    isSpeaking,
+    isPaused,
+    currentSpeakingMessageId,
+    speak,
+    pause: pauseSpeech,
+    resume: resumeSpeech,
+    cancel: cancelSpeech,
+    error: speechError,
+  } = useSpeech();
 
   // 移除自动滚动，改为用户手动控制
   // useEffect(() => {
@@ -52,6 +79,17 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   useEffect(() => {
     setEditTitleInput(sessionTitle || topic || '');
   }, [sessionTitle, topic]);
+
+  // 语音识别结果自动填充到输入框
+  useEffect(() => {
+    if (transcript && !isListening) {
+      setInput(transcript);
+      if (textareaRef.current) {
+        adjustTextareaHeight(textareaRef.current);
+      }
+      resetTranscript();
+    }
+  }, [transcript, isListening, resetTranscript]);
 
   // 加载输入历史记录
   useEffect(() => {
@@ -109,6 +147,17 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 空格键语音输入（仅当输入框为空时）
+    if (e.key === ' ' && !input.trim() && !isLoading && browserSupportsSpeechRecognition) {
+      e.preventDefault();
+      if (isListening) {
+        stopListening();
+      } else {
+        startListening();
+      }
+      return;
+    }
+
     // Enter 发送（无 Shift）
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -233,6 +282,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     { id: 'V3.2Think', name: 'DeepSeek V3.2 Think' },
     { id: 'GLM-4.7-Flash', name: 'GLM-4 Flash ⚡' },
     { id: 'GLM-4.7-Plus', name: 'GLM-4 Plus 🚀' },
+    // MiniMax M2 系列（旗舰模型）
+    { id: 'MiniMax-M2.5', name: 'MiniMax M2.5 (旗舰)' },
+    { id: 'MiniMax-M2.5-lightning', name: 'MiniMax M2.5 Lightning (闪电)' },
+    { id: 'MiniMax-M2.1', name: 'MiniMax M2.1 (编程)' },
+    { id: 'MiniMax-M2.1-ning', name: 'MiniMax M2.1-ning (均衡)' },
   ];
 
   const teachingModes = [
@@ -384,6 +438,23 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         </div>
 
         <div className="flex items-center space-x-2 md:space-x-3 flex-shrink-0">
+            {/* Voice Control Toggle */}
+            {browserSupportsSpeechSynthesis && (
+              <button
+                onClick={() => setShowVoicePanel(!showVoicePanel)}
+                className={`hidden md:flex p-1.5 rounded-lg transition-colors ${
+                  showVoicePanel
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'text-slate-500 hover:bg-slate-100'
+                }`}
+                title="语音控制面板"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+              </button>
+            )}
+
             {/* Mode Selector (Compact) */}
             <div className="relative group hidden md:block">
                  <select 
@@ -434,9 +505,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                   : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
               }`}
             >
-              <MessageContent 
-                content={msg.content || ''} 
+              <MessageContent
+                content={msg.content || ''}
                 role={msg.role === MessageRole.User ? 'user' : 'model'}
+                messageId={msg.id}
+                isSpeaking={currentSpeakingMessageId === msg.id ? isSpeaking : false}
+                isPaused={currentSpeakingMessageId === msg.id ? isPaused : false}
+                onSpeak={speak}
+                onPause={pauseSpeech}
+                onResume={resumeSpeech}
+                onCancel={cancelSpeech}
               />
             </div>
           </div>
@@ -469,13 +547,34 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="输入你的想法...（Shift+Enter 换行，Enter 发送，↑↓ 历史，Ctrl+K 清空）"
+            placeholder={browserSupportsSpeechRecognition
+              ? "输入你的想法...（Shift+Enter 换行，Enter 发送，空格键语音输入，↑↓ 历史，Ctrl+K 清空）"
+              : "输入你的想法...（Shift+Enter 换行，Enter 发送，↑↓ 历史，Ctrl+K 清空）"
+            }
             disabled={isLoading}
             name="message-input"
             id="message-input"
-            className="w-full pl-5 pr-12 py-3.5 min-h-[60px] max-h-[200px] bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base resize-none overflow-y-auto"
+            className="w-full pl-5 pr-28 py-3.5 min-h-[60px] max-h-[200px] bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base resize-none overflow-y-auto"
             rows={2}
           />
+
+          {/* Voice Input Button */}
+          {browserSupportsSpeechRecognition && (
+            <div className="absolute right-12 bottom-2">
+              <VoiceInputButton
+                isListening={isListening}
+                transcript={transcript}
+                interimTranscript={interimTranscript}
+                onStart={startListening}
+                onStop={stopListening}
+                onReset={resetTranscript}
+                disabled={isLoading}
+                error={speechError}
+              />
+            </div>
+          )}
+
+          {/* Send Button */}
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
@@ -486,6 +585,15 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             </svg>
           </button>
         </form>
+
+        {/* Voice Control Panel */}
+        <VoiceControlPanel
+          voiceConfig={voiceConfig}
+          onConfigChange={updateVoiceConfig}
+          availableVoices={availableVoices}
+          isOpen={showVoicePanel}
+          onClose={() => setShowVoicePanel(false)}
+        />
       </div>
     </div>
   );

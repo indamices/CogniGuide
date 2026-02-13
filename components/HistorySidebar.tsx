@@ -10,6 +10,7 @@ interface HistorySidebarProps {
   onDeleteSession: (id: string, e: React.MouseEvent) => void;
   onRenameSession: (id: string, newTitle: string) => void;
   onNewChat: () => void;
+  onOpenAPIKeyManager?: () => void;
   version?: string;
 }
 
@@ -22,6 +23,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onDeleteSession,
   onRenameSession,
   onNewChat,
+  onOpenAPIKeyManager,
   version = 'v1.0.0'
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -259,9 +261,21 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
           )}
         </div>
         
-        {/* Footer with Version */}
-        <div className="p-4 border-t border-slate-200 text-center">
-            <p className="text-xs text-slate-400 font-medium">CogniGuide {version}</p>
+        {/* Footer with Version and API Key Manager */}
+        <div className="p-4 border-t border-slate-200 space-y-2">
+          {onOpenAPIKeyManager && (
+            <button
+              onClick={onOpenAPIKeyManager}
+              className="w-full flex items-center justify-center space-x-2 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors text-sm font-medium"
+              title="管理 API Keys"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              <span>API Key 管理</span>
+            </button>
+          )}
+          <p className="text-xs text-slate-400 font-medium text-center">CogniGuide {version}</p>
         </div>
       </div>
     </>

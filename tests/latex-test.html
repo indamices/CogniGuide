@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LaTeX公式测试</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+      background-color: #f5f5f5;
+    }
+    .test-section {
+      background: white;
+      padding: 30px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #4f46e5;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #4f46e5;
+      margin-top: 30px;
+    }
+    .dark-mode {
+      background-color: #1e1e2e;
+      color: #e5e7eb;
+    }
+    .dark-mode .test-section {
+      background: #2a2a3e;
+    }
+    .dark-mode h1 {
+      color: #e5e7eb;
+      border-bottom-color: #6366f1;
+    }
+    .dark-mode h2 {
+      color: #a5b4fc;
+    }
+    button {
+      padding: 10px 20px;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #4338ca;
+    }
+    .success {
+      color: #10b981;
+      font-weight: bold;
+    }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+</head>
+<body>
+  <button onclick="document.body.classList.toggle('dark-mode')">切换深色/浅色模式</button>
+
+  <div class="test-section">
+    <h1>LaTeX数学公式测试</h1>
+    <p>此页面用于测试CogniGuide的LaTeX数学公式渲染功能</p>
+  </div>
+
+  <div class="test-section">
+    <h2>1. 行内公式测试</h2>
+    <p>这是一个行内公式：$E = mc^2$，这是爱因斯坦的质能方程。</p>
+    <p>另一个行内公式：$\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$ 是一元二次方程的求根公式。</p>
+    <p>勾股定理：$a^2 + b^2 = c^2$</p>
+    <p class="success">✓ 如果上方显示正常渲染的数学公式，说明行内公式功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>2. 块级公式测试</h2>
+    <h3>积分公式</h3>
+    <p>$$
+    \int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
+    $$</p>
+
+    <h3>矩阵公式</h3>
+    <p>$$
+    \begin{pmatrix}
+    a & b \\
+    c & d
+    \end{pmatrix}
+    \begin{pmatrix}
+    x \\
+    y
+    \end{pmatrix}
+    =
+    \begin{pmatrix}
+    ax + by \\
+    cx + dy
+    \end{pmatrix}
+    $$</p>
+
+    <h3>微分方程</h3>
+    <p>$$
+    \frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u
+    $$</p>
+
+    <p class="success">✓ 如果上方显示正常渲染的数学公式，说明块级公式功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>3. 复杂公式测试</h2>
+    <h3>求和公式</h3>
+    <p>$$
+    \sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+    $$</p>
+
+    <h3>极限</h3>
+    <p>$$
+    \lim_{x \to \infty} \left(1 + \frac{1}{x}\right)^x = e
+    $$</p>
+
+    <h3>泰勒级数</h3>
+    <p>$$
+    f(x) = \sum_{n=0}^{\infty} \frac{f^{(n)}(a)}{n!}(x-a)^n
+    $$</p>
+
+    <h3>正态分布概率密度函数</h3>
+    <p>$$
+    f(x) = \frac{1}{\sigma\sqrt{2\pi}} e^{-\frac{(x-\mu)^2}{2\sigma^2}}
+    $$</p>
+
+    <p class="success">✓ 如果上方所有公式都正常显示，说明复杂公式渲染功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>4. 特殊符号和希腊字母测试</h2>
+    <p>希腊字母：$\alpha, \beta, \gamma, \delta, \epsilon, \theta, \lambda, \mu, \pi, \sigma, \phi, \omega$</p>
+    <p>集合符号：$\in, \notin, \subset, \subseteq, \cup, \cap, \emptyset$</p>
+    <p>箭头：$\rightarrow, \leftarrow, \Rightarrow, \Leftrightarrow$</p>
+    <p>关系符号：$\leq, \geq, \neq, \approx, \equiv$</p>
+    <p>运算符：$\times, \div, \pm, \mp, \cdot$</p>
+    <p class="success">✓ 如果上方所有特殊符号都正常显示，说明符号渲染功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>5. 混合内容测试</h2>
+    <p>在文本中使用多个公式：</p>
+    <ul>
+      <li>圆的面积公式：$A = \pi r^2$</li>
+      <li>球的体积公式：$V = \frac{4}{3}\pi r^3$</li>
+      <li>欧拉公式：$e^{i\pi} + 1 = 0$</li>
+    </ul>
+    <p class="success">✓ 如果上方列表中的公式都正常显示，说明混合渲染功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>6. 分数和根号测试</h2>
+    <p>简单分数：$\frac{1}{2}$</p>
+    <p>复杂分数：$\frac{\frac{a}{b}}{\frac{c}{d}} = \frac{ad}{bc}$</p>
+    <p>平方根：$\sqrt{x^2 + y^2}$</p>
+    <p>n次方根：$\sqrt[n]{x}$</p>
+    <p class="success">✓ 如果上方公式都正常显示，说明分数和根号渲染功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>7. 上下标测试</h2>
+    <p>上标：$x^2, x^{2n}$</p>
+    <p>下标：$a_1, a_{i,j}$</p>
+    <p>组合：$x_{i}^{2}$</p>
+    <p>向量：$\vec{F} = m\vec{a}$</p>
+    <p>加粗：$\mathbf{A}$</p>
+    <p class="success">✓ 如果上方公式都正常显示，说明上下标渲染功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>8. 麦克斯韦方程组</h2>
+    <p>$$
+    \nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}
+    $$</p>
+    <p>$$
+    \nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}
+    $$</p>
+    <p class="success">✓ 如果上方公式都正常显示，说明复杂物理公式渲染功能正常</p>
+  </div>
+
+  <div class="test-section">
+    <h2>测试总结</h2>
+    <p><strong>功能清单：</strong></p>
+    <ul>
+      <li>✓ 行内公式（$...$）</li>
+      <li>✓ 块级公式（$$...$$）</li>
+      <li>✓ 积分、微分方程</li>
+      <li>✓ 矩阵表示</li>
+      <li>✓ 求和、极限</li>
+      <li>✓ 希腊字母</li>
+      <li>✓ 特殊符号</li>
+      <li>✓ 分数、根号</li>
+      <li>✓ 上下标</li>
+      <li>✓ 向量、矩阵</li>
+      <li>✓ 深色/浅色主题支持</li>
+    </ul>
+    <p><strong>下一步：</strong></p>
+    <p>将此功能集成到CogniGuide的MessageContent组件中，确保在聊天对话中可以正常渲染数学公式。</p>
+  </div>
+
+  <script>
+    // 页面加载完成后显示提示
+    window.addEventListener('load', function() {
+      console.log('LaTeX公式测试页面已加载');
+      console.log('KaTeX版本:', katex.version);
+    });
+  </script>
+</body>
+</html>

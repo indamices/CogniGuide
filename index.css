@@ -1,5 +1,6 @@
 @import './global.css';
 @import 'highlight.js/styles/github.css';
+@import 'katex/dist/katex.min.css';
 
 @tailwind base;
 @tailwind components;
@@ -10,16 +11,93 @@
   .btn-primary {
     @apply px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors;
   }
-  
+
   .btn-secondary {
     @apply px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors;
   }
-  
+
   .input-field {
     @apply w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none;
   }
-  
+
   .card {
     @apply bg-white rounded-xl shadow-sm border border-slate-200;
+  }
+}
+
+/* KaTeX 数学公式样式优化 */
+@layer components {
+  /* 行内公式样式 */
+  .katex {
+    font-size: 1em;
+  }
+
+  /* 块级公式样式 */
+  .katex-display {
+    margin: 1em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  /* 确保公式在不同主题下清晰可见 */
+  .katex-html {
+    color: inherit;
+  }
+
+  /* 深色主题下的公式优化 */
+  .dark .katex,
+  [data-theme="dark"] .katex {
+    color: #e5e7eb;
+  }
+
+  .dark .katex-display,
+  [data-theme="dark"] .katex-display {
+    color: #e5e7eb;
+  }
+
+  /* 用户消息中的公式（深色背景） */
+  .message-content.text-white .katex {
+    color: #e5e7eb;
+  }
+
+  .message-content.text-white .katex-display {
+    color: #e5e7eb;
+  }
+
+  /* 模型消息中的公式（浅色背景） */
+  .message-content.text-slate-800 .katex {
+    color: #1f2937;
+  }
+
+  .message-content.text-slate-800 .katex-display {
+    color: #1f2937;
+  }
+
+  /* 确保公式的分数线和符号清晰 */
+  .katex .mfrac .frac-line,
+  .katex .mtable .vertical-separator,
+  .katex .arraycolsep {
+    border-color: currentColor;
+  }
+
+  /* 确保公式的箭头和运算符清晰 */
+  .katex .mspace,
+  .katex .mrel,
+  .katex .mbin,
+  .katex .mpunct,
+  .katex .mopen,
+  .katex .mclose {
+    color: inherit;
+  }
+
+  /* 优化数学公式的字体大小 */
+  .katex .fontsize-ensurer {
+    font-size: 1em;
+  }
+
+  /* 确保公式在代码块中也清晰可见 */
+  pre .katex,
+  code .katex {
+    font-size: 0.9em;
   }
 }

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate PWA Icons</title>
+</head>
+<body>
+  <h1>Icon Generator for CogniGuide PWA</h1>
+  <p>Right-click and save the icon below in different sizes:</p>
+  <canvas id="canvas" width="512" height="512"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Draw background
+    ctx.fillStyle = '#3b82f6';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Draw hexagon
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(256, 100);
+    ctx.lineTo(380, 200);
+    ctx.lineTo(380, 350);
+    ctx.lineTo(256, 420);
+    ctx.lineTo(132, 350);
+    ctx.lineTo(132, 200);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw circle
+    ctx.fillStyle = '#3b82f6';
+    ctx.globalAlpha = 1.0;
+    ctx.beginPath();
+    ctx.arc(256, 260, 60, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw brain/synapse pattern
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(220, 240);
+    ctx.lineTo(240, 280);
+    ctx.lineTo(256, 250);
+    ctx.lineTo(272, 280);
+    ctx.lineTo(292, 240);
+    ctx.stroke();
+
+    // Generate different sizes
+    const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+    sizes.forEach(size => {
+      setTimeout(() => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = size;
+        tempCanvas.height = size;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(canvas, 0, 0, size, size);
+
+        const link = document.createElement('a');
+        link.download = `icon-${size}x${size}.png`;
+        link.href = tempCanvas.toDataURL('image/png');
+        link.textContent = `Download ${size}x${size}`;
+        document.body.appendChild(document.createElement('br'));
+        document.body.appendChild(link);
+      }, 100);
+    });
+  </script>
+</body>
+</html>

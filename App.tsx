@@ -9,13 +9,21 @@ import ExportDialog from './components/ExportDialog';
 import NotificationSystem, { NotificationType } from './components/NotificationSystem';
 import ThemeToggle from './components/ThemeToggle';
 import UndoRedoToolbar from './components/UndoRedoToolbar';
+import LearningAnalytics from './components/LearningAnalytics';
+import APIKeyManager from './components/APIKeyManager';
 import { useTheme } from './components/ThemeProvider';
-import { ChatMessage, MessageRole, LearningState, ConceptNode, ConceptLink, SavedSession, TeachingMode, TeachingStage, TutorResponse } from './types';
+import OfflineIndicator from './components/OfflineIndicator';
+import SyncStatus from './components/SyncStatus';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
+import { useServiceWorker } from './utils/useServiceWorker';
+import { ChatMessage, MessageRole, LearningState, ConceptNode, ConceptLink, SavedSession, TeachingMode, TeachingStage, TutorResponse, ReviewCard } from './types';
 import { sendMessageToTutor } from './services/geminiService';
 import { sendMessageToDeepSeek } from './services/deepseekService';
 import { sendMessageToGLM } from './services/glmService';
+import { sendMessageToMiniMax } from './services/minimaxService';
 import safeStorage from './utils/storage';
 import { mergeConceptsSmart, mergeLinksSmart, evolveTreeStructure, enforceTreeStructure, simplifyTreeStructure } from './utils/mindMapHelpers';
+import { Recommendation } from './utils/recommendationEngine';
 
 interface Notification {
   id: string;
@@ -54,9 +62,14 @@ const APP_VERSION = 'v1.0.6';
 const generateUniqueId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 const App: React.FC = () => {
+  // PWA Service Worker
+  const sw = useServiceWorker();
+
   const [apiKey, setApiKey] = useState<string>('');
   const [deepSeekKey, setDeepSeekKey] = useState<string>('');
   const [glmKey, setGlmKey] = useState<string>('');
+  const [minimaxKey, setMiniMaxKey] = useState<string>('');
+  const [minimaxGroupId, setMiniMaxGroupId] = useState<string>('');
   
   // Session State
   const [sessions, setSessions] = useState<SavedSession[]>([]);
@@ -110,6 +123,18 @@ const App: React.FC = () => {
   // Export Dialog
   const [exportDialog, setExportDialog] = useState(false);
 
+  // Analytics Dialog
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // API Key Manager Dialog
+  const [showAPIKeyManager, setShowAPIKeyManager] = useState(false);
+
+  // Spaced Repetition System
+  const [reviewCards, setReviewCards] = useState<ReviewCard[]>([]);
+
+  // Recommendation System handler (定义在组件顶层，避免重复声明)
+  const handleStartLearningRef = useRef<((recommendation: Recommendation) => void) | null>(null);
+
   // Notification helper
   const addNotification = useCallback((
     type: NotificationType,
@@ -151,7 +176,28 @@ const App: React.FC = () => {
     if (storedGLMKey) {
         setGlmKey(storedGLMKey);
     }
-    
+
+    const storedMiniMaxKey = safeStorage.getItem('minimax_api_key');
+    if (storedMiniMaxKey) {
+        setMiniMaxKey(storedMiniMaxKey);
+    }
+
+    const storedMiniMaxGroupId = safeStorage.getItem('minimax_group_id');
+    if (storedMiniMaxGroupId) {
+        setMiniMaxGroupId(storedMiniMaxGroupId);
+    }
+
+    // Load review cards
+    const storedCards = safeStorage.getItem('cogniguide_review_cards');
+    if (storedCards) {
+      try {
+        const parsedCards = JSON.parse(storedCards);
+        setReviewCards(parsedCards);
+      } catch (e) {
+        console.error("Failed to parse review cards", e);
+      }
+    }
+
     // Load sessions
     let parsedSessions: SavedSession[] = [];
     const storedSessions = safeStorage.getItem('cogniguide_sessions');
@@ -232,6 +278,16 @@ const App: React.FC = () => {
     });
   }, [sessionDataToSave]);
 
+  // --- Auto-Save Review Cards ---
+  useEffect(() => {
+    safeStorage.setItem('cogniguide_review_cards', JSON.stringify(reviewCards));
+  }, [reviewCards]);
+
+  // 处理卡片更新
+  const handleUpdateCards = useCallback((updatedCards: ReviewCard[]) => {
+    setReviewCards(updatedCards);
+  }, []);
+
   const saveGeminiKey = (key: string) => {
     setApiKey(key);
     safeStorage.setItem('gemini_api_key', key);
@@ -245,6 +301,16 @@ const App: React.FC = () => {
   const saveGLMKey = (key: string) => {
     setGlmKey(key);
     safeStorage.setItem('glm_api_key', key);
+  };
+
+  const saveMiniMaxKey = (key: string) => {
+    setMiniMaxKey(key);
+    safeStorage.setItem('minimax_api_key', key);
+  };
+
+  const saveMiniMaxGroupId = (groupId: string) => {
+    setMiniMaxGroupId(groupId);
+    safeStorage.setItem('minimax_group_id', groupId);
   };
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
@@ -552,8 +618,27 @@ const App: React.FC = () => {
       // 修复：使用明确的模型列表检查
       const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
       const GLM_MODELS = ['GLM-4.7-Flash', 'GLM-4.7-Plus', 'GLM-4.7-Air', 'GLM-4.7-Bolt', 'glm-4-flash', 'glm-4-plus', 'GLM-4', 'GLM-4-flash', 'GLM-4-plus'];
-      
-      if (GLM_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
+      const MINIMAX_MODELS = [
+        // M2 系列（旗舰模型）
+        'MiniMax-M2.5', 'MiniMax-M2.5-lightning', 'MiniMax-M2.1', 'MiniMax-M2.1-ning'
+      ];
+
+      if (MINIMAX_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
+          // MiniMax models
+          if (!minimaxKey) {
+              throw new Error("请先在上方输入框中设置 MiniMax API Key");
+          }
+          response = await sendMessageToMiniMax(
+            fullHistory,
+            currentLearningState.concepts,
+            currentLearningState.links,
+            currentLearningState.summary,
+            minimaxKey,
+            currentModel,
+            currentMode,
+            minimaxGroupId
+          );
+      } else if (GLM_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
           // GLM models
           if (!glmKey) {
               throw new Error("请先在上方输入框中设置 GLM API Key");
@@ -749,6 +834,20 @@ const App: React.FC = () => {
     processMessage(userMsg, messages, model, learningState, teachingMode);
   };
 
+  // 创建 handleStartLearning 并保存到 ref
+  const handleStartLearning = useCallback((recommendation: Recommendation) => {
+    if (recommendation.suggestedQuestions && recommendation.suggestedQuestions.length > 0) {
+      const question = recommendation.suggestedQuestions[0];
+      handleSendMessage(question);
+    } else if (recommendation.type === 'rest_break') {
+      addNotification('info', '好的，记得适当休息放松！');
+    } else {
+      handleSendMessage(`我想学习：${recommendation.description}`);
+    }
+  }, [addNotification]);
+
+  handleStartLearningRef.current = handleStartLearning;
+
   const exportToClipboard = useCallback(async () => {
     // 0. Defensive Check
     if (!messages || messages.length === 0) {
@@ -847,8 +946,9 @@ ${mapSection}
   // Helper function to check if model is Gemini
   const isGeminiModel = (modelName: string): boolean => {
     const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
-    const GLM_MODELS = ['GLM-4.7-Flash', 'GLM-4.7-Plus', 'GLM-4.7-Air', 'GLM-4.7-Bolt', 'glm-4-flash', 'glm-4-plus', 'GLM-4'];
-    return !DEEPSEEK_MODELS.includes(modelName) && !GLM_MODELS.some(m => modelName.toLowerCase().includes(m.toLowerCase()));
+    const GLM_MODELS = ['GLM-4.7-Flash', 'GLM-4.7-Plus', 'GLM-4.7-Air', 'GLM-4.7-Bolt', 'glm-4-flash', 'glm-4-plus', 'GLM-4', 'GLM-4-flash', 'GLM-4-plus'];
+    const MINIMAX_MODELS = ['MiniMax-abab6.5s', 'MiniMax-abab6.5g', 'MiniMax-abab6-chat', 'MiniMax-abab5.5s', 'abab6.5s-chat', 'abab6.5g-chat', 'abab6-chat', 'abab5.5s-chat', 'abab5.5-chat'];
+    return !DEEPSEEK_MODELS.includes(modelName) && !GLM_MODELS.some(m => modelName.toLowerCase().includes(m.toLowerCase())) && !MINIMAX_MODELS.some(m => modelName.toLowerCase().includes(m.toLowerCase()));
   };
 
   return (
@@ -878,6 +978,30 @@ ${mapSection}
         topic={topic || sessionTitle}
       />
 
+      {/* Learning Analytics Dialog */}
+      {showAnalytics && (
+        <LearningAnalytics
+          sessions={sessions}
+          onClose={() => setShowAnalytics(false)}
+        />
+      )}
+
+      {/* API Key Manager Dialog */}
+      <APIKeyManager
+        isOpen={showAPIKeyManager}
+        onClose={() => setShowAPIKeyManager(false)}
+        geminiKey={apiKey}
+        deepSeekKey={deepSeekKey}
+        glmKey={glmKey}
+        minimaxKey={minimaxKey}
+        minimaxGroupId={minimaxGroupId}
+        onSaveGeminiKey={saveGeminiKey}
+        onSaveDeepSeekKey={saveDeepSeekKey}
+        onSaveGLMKey={saveGLMKey}
+        onSaveMiniMaxKey={saveMiniMaxKey}
+        onSaveMiniMaxGroupId={saveMiniMaxGroupId}
+      />
+
       {/* Keyboard Navigation */}
       <KeyboardNav
         onNextSession={() => {
@@ -895,7 +1019,7 @@ ${mapSection}
         onNewChat={handleNewChat}
       />
 
-      <HistorySidebar 
+      <HistorySidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         sessions={sessions}
@@ -904,6 +1028,7 @@ ${mapSection}
         onDeleteSession={deleteSession}
         onRenameSession={updateSessionTitle}
         onNewChat={handleNewChat}
+        onOpenAPIKeyManager={() => setShowAPIKeyManager(true)}
         version={APP_VERSION}
       />
 
@@ -918,10 +1043,10 @@ ${mapSection}
                     使用 Gemini 需配置 API Key
                   </span>
                   <div className="flex gap-2">
-                    <input 
-                        type="password" 
-                        placeholder="输入 Gemini API Key" 
-                        className="text-xs border border-amber-300 rounded px-2 py-1 w-40 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    <input
+                        type="password"
+                        placeholder="快速输入 API Key"
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-amber-500"
                         onChange={(e) => saveGeminiKey(e.target.value)}
                         value={apiKey}
                         onKeyDown={(e) => {
@@ -930,6 +1055,12 @@ ${mapSection}
                           }
                         }}
                     />
+                    <button
+                      onClick={() => setShowAPIKeyManager(true)}
+                      className="px-2 py-1 text-xs font-medium text-amber-700 border border-amber-400 rounded hover:bg-amber-100 transition-colors"
+                    >
+                      管理
+                    </button>
                   </div>
               </div>
           )}
@@ -938,6 +1069,8 @@ ${mapSection}
             const isGLMModel = GLM_MODELS.some(m => model.toLowerCase().includes(m.toLowerCase()));
             const DEEPSEEK_MODELS = ['V3.2', 'V3.2Think', 'deepseek-chat', 'deepseek-reasoner'];
             const isDeepSeekModel = DEEPSEEK_MODELS.includes(model);
+            const MINIMAX_MODELS = ['MiniMax-M2.5', 'MiniMax-M2.5-lightning', 'MiniMax-M2.1', 'MiniMax-M2.1-ning', 'M2.5', 'M2.5-lightning', 'M2.1', 'M2.1-ning'];
+            const isMiniMaxModel = MINIMAX_MODELS.some(m => model.toLowerCase().includes(m.toLowerCase()));
             
             if (isGLMModel && !glmKey) {
               return (
@@ -947,10 +1080,10 @@ ${mapSection}
                     使用 GLM-4.7 需配置 API Key
                   </span>
                   <div className="flex gap-2">
-                    <input 
-                        type="password" 
-                        placeholder="GLM API Key" 
-                        className="text-xs border border-amber-300 rounded px-2 py-1 w-40 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    <input
+                        type="password"
+                        placeholder="快速输入 API Key"
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-amber-500"
                         onChange={(e) => saveGLMKey(e.target.value)}
                         value={glmKey}
                         onKeyDown={(e) => {
@@ -959,6 +1092,12 @@ ${mapSection}
                           }
                         }}
                     />
+                    <button
+                      onClick={() => setShowAPIKeyManager(true)}
+                      className="px-2 py-1 text-xs font-medium text-amber-700 border border-amber-400 rounded hover:bg-amber-100 transition-colors"
+                    >
+                      管理
+                    </button>
                   </div>
                 </div>
               );
@@ -970,10 +1109,10 @@ ${mapSection}
                     使用 DeepSeek 需配置 Key
                   </span>
                   <div className="flex gap-2">
-                    <input 
-                        type="password" 
-                        placeholder="sk-..." 
-                        className="text-xs border border-amber-300 rounded px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    <input
+                        type="password"
+                        placeholder="快速输入 Key"
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-amber-500"
                         onChange={(e) => saveDeepSeekKey(e.target.value)}
                         value={deepSeekKey}
                         onKeyDown={(e) => {
@@ -982,6 +1121,41 @@ ${mapSection}
                           }
                         }}
                     />
+                    <button
+                      onClick={() => setShowAPIKeyManager(true)}
+                      className="px-2 py-1 text-xs font-medium text-amber-700 border border-amber-400 rounded hover:bg-amber-100 transition-colors"
+                    >
+                      管理
+                    </button>
+                  </div>
+                </div>
+              );
+            } else if (isMiniMaxModel && !minimaxKey) {
+              return (
+                <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
+                  <span className="text-xs text-amber-800 font-medium flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    使用 MiniMax 需配置 API Key
+                  </span>
+                  <div className="flex gap-2">
+                    <input
+                        type="password"
+                        placeholder="快速输入 API Key"
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        onChange={(e) => saveMiniMaxKey(e.target.value)}
+                        value={minimaxKey}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && minimaxKey.trim().length > 0) {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                    />
+                    <button
+                      onClick={() => setShowAPIKeyManager(true)}
+                      className="px-2 py-1 text-xs font-medium text-amber-700 border border-amber-400 rounded hover:bg-amber-100 transition-colors"
+                    >
+                      管理
+                    </button>
                   </div>
                 </div>
               );
@@ -1017,6 +1191,24 @@ ${mapSection}
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-slate-800">学习仪表板</h2>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAPIKeyManager(true)}
+                className="p-2 hover:bg-indigo-50 rounded-lg transition-colors text-indigo-600 hover:text-indigo-700"
+                title="API Key 管理"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setShowAnalytics(true)}
+                className="p-2 hover:bg-indigo-50 rounded-lg transition-colors text-indigo-600 hover:text-indigo-700"
+                title="学习分析"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </button>
               <UndoRedoToolbar
                 canUndo={historyStack.length > 0}
                 canRedo={redoStack.length > 0}
@@ -1026,9 +1218,21 @@ ${mapSection}
               <ThemeToggle />
             </div>
           </div>
-          <Dashboard state={learningState} onExport={() => setExportDialog(true)} />
+          <Dashboard
+            state={learningState}
+            onExport={() => setExportDialog(true)}
+            cards={reviewCards}
+            onUpdateCards={handleUpdateCards}
+            sessionId={currentSessionId || undefined}
+            sessions={sessions}
+            onStartLearning={handleStartLearning}
+          />
         </div>
       </div>
+
+      {/* PWA Components */}
+      <OfflineIndicator />
+      <PWAInstallPrompt />
     </div>
   );
 };

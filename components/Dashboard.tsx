@@ -1,15 +1,38 @@
 
 import React, { useState } from 'react';
 import { MasteryLevel, LearningState, TeachingStage } from '../types';
-import KnowledgeMap from './KnowledgeMap';
+import KnowledgeMapSwitcher from './KnowledgeMapSwitcher';
+import SpacedRepetition from './SpacedRepetition';
+import CreateCardDialog from './CreateCardDialog';
+import LearningPathRecommendations from './LearningPathRecommendations';
+import { ReviewCard } from '../types';
+import { extractKeyConceptsFromAI } from '../utils/spacedRepetition';
+import { Recommendation } from '../utils/recommendationEngine';
+import SyncStatus from './SyncStatus';
 
 interface DashboardProps {
   state: LearningState;
   onExport: () => void;
+  cards?: ReviewCard[];
+  onUpdateCards?: (cards: ReviewCard[]) => void;
+  sessionId?: string;
+  sessions?: any[];
+  onStartLearning?: (recommendation: Recommendation) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
+const Dashboard: React.FC<DashboardProps> = ({
+  state,
+  onExport,
+  cards = [],
+  onUpdateCards,
+  sessionId,
+  sessions = [],
+  onStartLearning
+}) => {
   const [showMindMap, setShowMindMap] = useState(false);
+  const [showSpacedRepetition, setShowSpacedRepetition] = useState(false);
+  const [showCreateCard, setShowCreateCard] = useState(false);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'review' | 'recommendations'>('dashboard');
 
   const conceptCounts = {
     [MasteryLevel.Expert]: state.concepts.filter(c => c.mastery === MasteryLevel.Expert).length,
@@ -36,8 +59,140 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
   
   const currentStageIndex = stages.findIndex(s => s.id === state.currentStage);
 
+  const handleCreateCard = (card: ReviewCard) => {
+    if (onUpdateCards) {
+      onUpdateCards([...cards, card]);
+    }
+  };
+
+  // 从笔记中提取知识点并创建卡片
+  const handleExtractCards = () => {
+    if (!onUpdateCards || !sessionId) return;
+
+    const lastSummary = state.summary.slice(-3).join('\n\n');
+    if (!lastSummary) {
+      alert('暂无笔记可用于提取');
+      return;
+    }
+
+    const concepts = extractKeyConceptsFromAI(lastSummary, sessionId);
+    if (concepts.length === 0) {
+      alert('未找到明显的知识点，请继续学习后再试');
+      return;
+    }
+
+    const newCards: ReviewCard[] = concepts.map(c => {
+      const cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      return {
+        id: cardId,
+        question: c.question,
+        answer: c.answer,
+        sessionId,
+        createdDate: Date.now(),
+        easeFactor: 2.5,
+        interval: 0,
+        repetitions: 0,
+        nextReviewDate: Date.now(),
+        tags: [...(c.tags || []), '自动提取'],
+        reviewHistory: [],
+        priority: c.priority
+      };
+    });
+
+    onUpdateCards([...cards, ...newCards]);
+    alert(`已创建 ${newCards.length} 张复习卡片！`);
+  };
+
   return (
     <div className="h-full flex flex-col space-y-4 relative">
+      {/* Tab 切换 */}
+      <div className="flex gap-2 bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm">
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+            activeTab === 'dashboard'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+          }`}
+        >
+          学习仪表板
+        </button>
+        <button
+          onClick={() => setActiveTab('review')}
+          className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${
+            activeTab === 'review'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+          }`}
+        >
+          间隔重复
+          {cards.filter(c => c.sessionId === sessionId && c.nextReviewDate <= Date.now()).length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              {cards.filter(c => c.sessionId === sessionId && c.nextReviewDate <= Date.now()).length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('recommendations')}
+          className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+            activeTab === 'recommendations'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+          }`}
+        >
+          智能推荐
+        </button>
+      </div>
+
+      {/* Sync Status */}
+      <div className="mb-3 px-2">
+        <SyncStatus className="text-xs" />
+      </div>
+
+      {/* 推荐模式 */}
+      {activeTab === 'recommendations' ? (
+        <div className="flex-1 overflow-hidden">
+          <LearningPathRecommendations
+            concepts={state.concepts}
+            links={state.links}
+            reviewCards={cards}
+            sessionId={sessionId}
+            sessions={sessions}
+            onStartLearning={onStartLearning}
+          />
+        </div>
+      ) : activeTab === 'review' ? (
+        <div className="flex-1 overflow-y-auto">
+          <SpacedRepetition
+            cards={cards}
+            onUpdateCards={onUpdateCards || (() => {})}
+            sessionId={sessionId}
+          />
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => setShowCreateCard(true)}
+              className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              手动创建卡片
+            </button>
+            <button
+              onClick={handleExtractCards}
+              className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+              </svg>
+              从笔记提取
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+      {/* 原有的 Dashboard 内容 */}
+      {/* Mind Map Modal */}
       
       {/* Mind Map Modal */}
       {showMindMap && (
@@ -52,7 +207,11 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
               </button>
             </div>
             <div className="flex-1 relative bg-slate-50">
-              <KnowledgeMap concepts={state.concepts} links={state.links} />
+              <KnowledgeMapSwitcher
+                concepts={state.concepts}
+                links={state.links}
+                height="100%"
+              />
             </div>
           </div>
         </div>
@@ -150,7 +309,7 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
       </div>
 
       {/* Floating Mind Map Button - Fixed Position (Outside of scrollable container) */}
-      <button 
+      <button
         onClick={() => setShowMindMap(true)}
         disabled={state.concepts.length === 0}
         className="fixed bottom-6 right-6 z-30 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl shadow-2xl hover:shadow-3xl transition-all disabled:opacity-50 disabled:bg-indigo-400 disabled:hover:bg-indigo-400 disabled:cursor-not-allowed text-xs font-semibold flex items-center justify-center gap-2 backdrop-blur-sm"
@@ -161,6 +320,16 @@ const Dashboard: React.FC<DashboardProps> = ({ state, onExport }) => {
         </svg>
         <span>查看脑图</span>
       </button>
+        </>
+      )}
+
+      {/* 创建卡片对话框 */}
+      <CreateCardDialog
+        isOpen={showCreateCard}
+        onClose={() => setShowCreateCard(false)}
+        onCreateCard={handleCreateCard}
+        sessionId={sessionId}
+      />
     </div>
   );
 };
