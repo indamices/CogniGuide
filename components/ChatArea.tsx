@@ -287,10 +287,14 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     { id: 'MiniMax-M2.5-lightning', name: 'MiniMax M2.5 Lightning (闪电)' },
     { id: 'MiniMax-M2.1', name: 'MiniMax M2.1 (编程)' },
     { id: 'MiniMax-M2.1-ning', name: 'MiniMax M2.1-ning (均衡)' },
-    // KIMI 系列（月之暗面）
-    { id: 'kimi-1.5-128k', name: 'KIMI 1.5 (128K) 🌙' },
-    { id: 'kimi-1.5-32k', name: 'KIMI 1.5 (32K) 🌙' },
-    { id: 'kimi-1.5', name: 'KIMI 1.5 (8K) 🌙' },
+    // KIMI K2.5 系列（最新）
+    { id: 'kimi-k2.5', name: 'KIMI K2.5 (多模态) 🌙' },
+    { id: 'kimi-k2-turbo-preview', name: 'KIMI K2 Turbo ⚡' },
+    { id: 'kimi-k2-thinking', name: 'KIMI K2 Thinking 💭' },
+    // KIMI 1.5 系列（月之暗面）
+    { id: 'moonshot-v1-128k', name: 'KIMI 1.5 (128K) 🌙' },
+    { id: 'moonshot-v1-32k', name: 'KIMI 1.5 (32K) 🌙' },
+    { id: 'moonshot-v1-8k', name: 'KIMI 1.5 (8K) 🌙' },
   ];
 
   const teachingModes = [

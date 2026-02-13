@@ -226,18 +226,26 @@ export const sendMessageToKIMI = async (
 
   // Map model names to actual KIMI API model identifiers
   const modelMap: Record<string, string> = {
-    'kimi-1.5': 'moonshot-v1-8k',
-    'kimi-1.5-32k': 'moonshot-v1-32k',
-    'kimi-1.5-128k': 'moonshot-v1-128k',
+    // K2.5 系列（最新多模态模型）
+    'kimi-k2.5': 'kimi-k2.5',
+    'kimi-k2-turbo-preview': 'kimi-k2-turbo-preview',
+    'kimi-k2-thinking': 'kimi-k2-thinking-turbo',
+    // Moonshot v1 系列
     'moonshot-v1-8k': 'moonshot-v1-8k',
     'moonshot-v1-32k': 'moonshot-v1-32k',
     'moonshot-v1-128k': 'moonshot-v1-128k',
+    // 兼容旧命名
+    'kimi-1.5': 'moonshot-v1-8k',
+    'kimi-1.5-32k': 'moonshot-v1-32k',
+    'kimi-1.5-128k': 'moonshot-v1-128k',
     'kimi': 'moonshot-v1-32k',
     'kimi-32k': 'moonshot-v1-32k',
     'kimi-128k': 'moonshot-v1-128k',
+    // Code 模型
+    'kimi-code': 'kimi-k2-turbo-preview', // Code 使用 K2 Turbo
   };
 
-  const actualModelName = modelMap[modelName.toLowerCase()] || 'moonshot-v1-32k';
+  const actualModelName = modelMap[modelName.toLowerCase()] || 'kimi-k2-turbo-preview';
 
   // Convert history to KIMI format
   const messages = history.map(msg => ({

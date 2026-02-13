@@ -635,7 +635,10 @@ const App: React.FC = () => {
         'MiniMax-M2.5', 'MiniMax-M2.5-lightning', 'MiniMax-M2.1', 'MiniMax-M2.1-ning'
       ];
       const KIMI_MODELS = [
-        'kimi-1.5', 'kimi-1.5-32k', 'kimi-1.5-128k', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi', 'kimi-32k', 'kimi-128k'
+        'kimi-k2.5', 'kimi-k2-turbo-preview', 'kimi-k2-thinking',
+        'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k',
+        'kimi-1.5', 'kimi-1.5-32k', 'kimi-1.5-128k',
+        'kimi', 'kimi-32k', 'kimi-128k', 'kimi-code'
       ];
 
       if (KIMI_MODELS.some(m => currentModel.toLowerCase().includes(m.toLowerCase()))) {
@@ -1102,8 +1105,39 @@ ${mapSection}
             const isDeepSeekModel = DEEPSEEK_MODELS.includes(model);
             const MINIMAX_MODELS = ['MiniMax-M2.5', 'MiniMax-M2.5-lightning', 'MiniMax-M2.1', 'MiniMax-M2.1-ning', 'M2.5', 'M2.5-lightning', 'M2.1', 'M2.1-ning'];
             const isMiniMaxModel = MINIMAX_MODELS.some(m => model.toLowerCase().includes(m.toLowerCase()));
-            
-            if (isGLMModel && !glmKey) {
+            const KIMI_MODELS = ['kimi-1.5', 'kimi-1.5-32k', 'kimi-1.5-128k', 'kimi-k2.5', 'kimi-k2-turbo-preview', 'kimi-k2-thinking', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi', 'kimi-32k', 'kimi-128k', 'kimi-code'];
+            const isKIMIModel = KIMI_MODELS.some(m => model.toLowerCase().includes(m.toLowerCase()));
+
+            if (isKIMIModel && !kimiKey) {
+              return (
+                <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
+                  <span className="text-xs text-amber-800 font-medium flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    使用 KIMI 需配置 API Key
+                  </span>
+                  <div className="flex gap-2">
+                    <input
+                        type="password"
+                        placeholder="快速输入 API Key"
+                        className="text-xs border border-amber-300 rounded px-2 py-1 w-36 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        onChange={(e) => saveKIMIKey(e.target.value)}
+                        value={kimiKey}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && kimiKey.trim().length > 0) {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                    />
+                    <button
+                      onClick={() => setShowAPIKeyManager(true)}
+                      className="px-2 py-1 text-xs font-medium text-amber-700 border border-amber-400 rounded hover:bg-amber-100 transition-colors"
+                    >
+                      管理
+                    </button>
+                  </div>
+                </div>
+              );
+            } else if (isGLMModel && !glmKey) {
               return (
                 <div className="absolute top-0 left-0 right-0 z-20 bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between shadow-sm">
                   <span className="text-xs text-amber-800 font-medium flex items-center">
