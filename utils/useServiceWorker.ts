@@ -31,12 +31,10 @@ export const useServiceWorker = () => {
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      // Register service worker
-      navigator.serviceWorker
-        .register('/service-worker.js', { type: 'module' })
+      // Service worker 由 vite-plugin-pwa 生成（sw.js）并自动注册，
+      // 这里只获取已有的注册，不再重复注册不存在的 /service-worker.js
+      navigator.serviceWorker.ready
         .then((registration) => {
-          console.log('[SW] Registered successfully:', registration);
-
           setState(prev => ({ ...prev, registration }));
 
           // Check for updates
@@ -56,7 +54,7 @@ export const useServiceWorker = () => {
           });
         })
         .catch((error) => {
-          console.error('[SW] Registration failed:', error);
+          console.error('[SW] Failed to get registration:', error);
         });
 
       // Listen for controlling service worker changes

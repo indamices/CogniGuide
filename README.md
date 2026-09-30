@@ -7,7 +7,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.2-blue)](https://www.typescriptlang.org/)
   [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
-  [![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite)](https://vitejs.dev/)
+  [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite)](https://vitejs.dev/)
 </div>
 
 ---
@@ -56,9 +56,9 @@ CogniGuide 支持多个 AI 提供商，您需要配置至少一个 API Key：
 
 启动应用后，点击侧边栏的 "API Key 管理" 按钮，在界面中输入您的 API Key。
 
-#### 方式二：通过环境变量配置
+#### 方式二：通过环境变量配置（仅限本地开发）
 
-创建 `.env.local` 文件：
+复制 `.env.example` 为 `.env.local` 并填入 Key：
 
 ```env
 # Gemini (Google AI Studio)
@@ -77,6 +77,9 @@ VITE_MINIMAX_GROUP_ID=your_group_id  # 可选
 # KIMI (月之暗面)
 VITE_KIMI_API_KEY=your_kimi_api_key
 ```
+
+> ⚠️ 环境变量只在 `npm run dev` 时生效。生产构建（`npm run build`）不会把任何 Key 打包进 JS 文件，
+> 因为前端代码是公开的，打包进去等于公开 Key。部署后请通过 UI 输入 Key（只保存在浏览器本地）。
 
 #### 获取 API Key
 
@@ -97,6 +100,9 @@ npm run build
 
 # 预览生产构建
 npm run preview
+
+# 运行测试
+npm test
 ```
 
 访问 http://localhost:5173 开始使用。
@@ -151,7 +157,7 @@ CogniGuide/
 ├── services/        # AI 服务集成
 ├── hooks/          # 自定义 Hooks
 ├── utils/          # 工具函数
-├── docs/           # 文档
+├── docs/           # 功能文档（docs/archive/ 为历史开发记录）
 ├── public/         # 静态资源
 └── types.ts        # TypeScript 类型定义
 ```
@@ -161,11 +167,11 @@ CogniGuide/
 ## 技术栈
 
 - **框架**: React 19 + TypeScript
-- **构建工具**: Vite 6
-- **UI**: TailwindCSS
+- **构建工具**: Vite 7
+- **UI**: TailwindCSS 3（PostCSS 构建）
 - **状态管理**: React Hooks
 - **存储**: localStorage + IndexedDB
-- **可视化**: D3.js, React Flow
+- **可视化**: D3.js, 3d-force-graph, Recharts
 - **PWA**: Workbox
 
 ---

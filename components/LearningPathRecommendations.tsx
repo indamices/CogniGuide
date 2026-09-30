@@ -122,15 +122,18 @@ const LearningPathRecommendations: React.FC<LearningPathRecommendationsProps> = 
             <h3 class="font-bold text-lg">学习计划</h3>
             <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600">
               <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width={2} d="M6 18L18 6M6 6l12 12" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
           <div class="flex-1 overflow-y-auto p-6">
-            <pre class="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">${plan}</pre>
+            <pre class="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300"></pre>
           </div>
         </div>
       `;
+      // 计划内容包含 AI 生成的文本，必须用 textContent 写入，避免 XSS
+      const pre = modal.querySelector('pre');
+      if (pre) pre.textContent = plan;
       document.body.appendChild(modal);
       modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.remove();

@@ -35,27 +35,6 @@ interface Notification {
   duration?: number;
 }
 
-interface Notification {
-  id: string;
-  type: NotificationType;
-  message: string;
-  timestamp: number;
-  autoClose?: boolean;
-  duration?: number;
-}
-
-// 修复：确保 process.env 可用（仅在客户端/构建时）
-declare global {
-  namespace NodeJS {
-    interface ProcessEnv {
-      [key: string]: string | undefined;
-    }
-  }
-  interface Process {
-    env: NodeJS.ProcessEnv;
-  }
-}
-
 // Define Application Version
 const APP_VERSION = 'v1.0.6';
 
@@ -134,9 +113,6 @@ const App: React.FC = () => {
   // Spaced Repetition System
   const [reviewCards, setReviewCards] = useState<ReviewCard[]>([]);
 
-  // Recommendation System handler (定义在组件顶层，避免重复声明)
-  const handleStartLearningRef = useRef<((recommendation: Recommendation) => void) | null>(null);
-
   // Notification helper
   const addNotification = useCallback((
     type: NotificationType,
@@ -155,44 +131,29 @@ const App: React.FC = () => {
 
   // --- Initial Load ---
   useEffect(() => {
-    // 从 localStorage 加载保存的 API keys
-    const storedGeminiKey = safeStorage.getItem('gemini_api_key');
-    if (storedGeminiKey) {
-      setApiKey(storedGeminiKey);
-    } else {
-      // 如果 localStorage 中没有，尝试从环境变量加载（向后兼容）
-      const envApiKey = process.env.API_KEY as string | undefined;
-      if (envApiKey && envApiKey.trim().length > 0) {
-        setApiKey(envApiKey);
-        safeStorage.setItem('gemini_api_key', envApiKey);
-      }
-    }
+    // 从 localStorage 加载保存的 API keys。
+    // 本地开发（npm run dev）时，可用 .env.local 中的 VITE_* 变量预填；
+    // 生产构建中 import.meta.env.DEV 为 false，这段会被移除，Key 不会被打包进公开的 JS。
+    const devKeys: Record<string, string | undefined> = import.meta.env.DEV ? {
+      gemini_api_key: import.meta.env.VITE_GEMINI_API_KEY,
+      deepseek_api_key: import.meta.env.VITE_DEEPSEEK_API_KEY,
+      glm_api_key: import.meta.env.VITE_GLM_API_KEY,
+      minimax_api_key: import.meta.env.VITE_MINIMAX_API_KEY,
+      minimax_group_id: import.meta.env.VITE_MINIMAX_GROUP_ID,
+      kimi_api_key: import.meta.env.VITE_KIMI_API_KEY,
+    } : {};
 
-    // 修复：安全访问 localStorage
-    const storedDSKey = safeStorage.getItem('deepseek_api_key');
-    if (storedDSKey) {
-        setDeepSeekKey(storedDSKey);
-    }
-    
-    const storedGLMKey = safeStorage.getItem('glm_api_key');
-    if (storedGLMKey) {
-        setGlmKey(storedGLMKey);
-    }
+    const loadKey = (storageKey: string, setter: (value: string) => void) => {
+      const value = safeStorage.getItem(storageKey) || devKeys[storageKey]?.trim();
+      if (value) setter(value);
+    };
 
-    const storedMiniMaxKey = safeStorage.getItem('minimax_api_key');
-    if (storedMiniMaxKey) {
-        setMiniMaxKey(storedMiniMaxKey);
-    }
-
-    const storedMiniMaxGroupId = safeStorage.getItem('minimax_group_id');
-    if (storedMiniMaxGroupId) {
-        setMiniMaxGroupId(storedMiniMaxGroupId);
-    }
-
-    const storedKIMIKey = safeStorage.getItem('kimi_api_key');
-    if (storedKIMIKey) {
-        setKIMIKey(storedKIMIKey);
-    }
+    loadKey('gemini_api_key', setApiKey);
+    loadKey('deepseek_api_key', setDeepSeekKey);
+    loadKey('glm_api_key', setGlmKey);
+    loadKey('minimax_api_key', setMiniMaxKey);
+    loadKey('minimax_group_id', setMiniMaxGroupId);
+    loadKey('kimi_api_key', setKIMIKey);
 
     // Load review cards
     const storedCards = safeStorage.getItem('cogniguide_review_cards');
@@ -866,8 +827,9 @@ const App: React.FC = () => {
     processMessage(userMsg, messages, model, learningState, teachingMode);
   };
 
-  // 创建 handleStartLearning 并保存到 ref
-  const handleStartLearning = useCallback((recommendation: Recommendation) => {
+  // 不使用 useCallback：handleSendMessage 依赖最新的 messages / learningState，
+  // 缓存回调会让推荐功能拿到过期的对话历史
+  const handleStartLearning = (recommendation: Recommendation) => {
     if (recommendation.suggestedQuestions && recommendation.suggestedQuestions.length > 0) {
       const question = recommendation.suggestedQuestions[0];
       handleSendMessage(question);
@@ -876,9 +838,7 @@ const App: React.FC = () => {
     } else {
       handleSendMessage(`我想学习：${recommendation.description}`);
     }
-  }, [addNotification]);
-
-  handleStartLearningRef.current = handleStartLearning;
+  };
 
   const exportToClipboard = useCallback(async () => {
     // 0. Defensive Check
