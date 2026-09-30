@@ -1,4 +1,4 @@
-import { CodeLanguage, CodeExecutionResult, ConsoleLogLevel } from '../types';
+import { CodeLanguage, CodeExecutionResult } from '../types';
 
 // Python execution using Pyodide (lazy loaded)
 let pyodide: any = null;
@@ -13,9 +13,10 @@ async function initPyodide(): Promise<any> {
 
   pyodideLoading = (async () => {
     try {
-      const { loadPyodide } = await import('pyodide');
+      const { loadPyodide, version } = await import('pyodide');
+      // indexURL 必须与 npm 包的版本一致，否则 Pyodide 会因版本不匹配拒绝加载
       pyodide = await loadPyodide({
-        indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/',
+        indexURL: `https://cdn.jsdelivr.net/pyodide/v${version}/full/`,
       });
 
       // Redirect stdout
@@ -39,6 +40,10 @@ async function initPyodide(): Promise<any> {
 
 /**
  * Execute JavaScript/TypeScript code in isolated context
+ *
+ * 代码在 sandbox="allow-scripts"（不含 allow-same-origin）的 iframe 中运行，
+ * iframe 与主页面不同源，父页面无法直接读取其 window 属性，
+ * 因此执行结果通过 postMessage 传回。
  */
 export async function executeJavaScript(code: string, timeout: number = 10000): Promise<CodeExecutionResult> {
   const startTime = Date.now();
@@ -53,8 +58,10 @@ export async function executeJavaScript(code: string, timeout: number = 10000): 
     const csp = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline';";
     const metaCSP = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
 
-    // Capture console output
-    const capturedLogs: { level: ConsoleLogLevel; messages: any[] }[] = [];
+    // 用随机 token 标识本次执行，只接受来自本 iframe 且 token 匹配的消息
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // 防止用户代码中的 "</script>" 提前结束脚本标签
+    const safeCode = code.replace(/<\/script/gi, '<\\/script');
 
     const script = `
       <html>
@@ -62,104 +69,111 @@ export async function executeJavaScript(code: string, timeout: number = 10000): 
         <body>
           <script>
             (function() {
-              const logs = [];
-              const originalConsole = {
+              var logs = [];
+              var posted = false;
+              var originalConsole = {
                 log: console.log,
                 warn: console.warn,
                 error: console.error,
                 info: console.info
               };
 
-              ['log', 'warn', 'error', 'info'].forEach((logLevel) => {
-                console[logLevel] = function(...args) {
-                  logs.push({ level: logLevel, args: args.map(a => String(a)) });
+              ['log', 'warn', 'error', 'info'].forEach(function(logLevel) {
+                console[logLevel] = function() {
+                  var args = Array.prototype.slice.call(arguments);
+                  logs.push({ level: logLevel, args: args.map(function(a) { return String(a); }) });
                   originalConsole[logLevel].apply(console, args);
                 };
               });
 
-              try {
-                ${code}
-                window.__executionResult = { success: true, logs: logs };
-              } catch (error) {
-                window.__executionResult = {
+              window.__cgSandboxPost = function(result) {
+                if (posted) return;
+                posted = true;
+                result.logs = logs;
+                parent.postMessage({ source: 'cogniguide-sandbox', token: ${JSON.stringify(token)}, result: result }, '*');
+              };
+
+              // 捕获语法错误等无法被 try/catch 捕获的错误
+              window.addEventListener('error', function(event) {
+                window.__cgSandboxPost({
                   success: false,
-                  error: error.message,
-                  stack: error.stack,
-                  logs: logs
-                };
-              }
+                  error: event.message,
+                  stack: event.error && event.error.stack
+                });
+              });
             })();
+          </script>
+          <script>
+            try {
+              ${safeCode}
+              ;window.__cgSandboxPost({ success: true });
+            } catch (error) {
+              window.__cgSandboxPost({
+                success: false,
+                error: error && error.message ? error.message : String(error),
+                stack: error && error.stack
+              });
+            }
           </script>
         </body>
       </html>
     `;
 
+    let settled = false;
+
+    const finish = (result: CodeExecutionResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      window.removeEventListener('message', handleMessage);
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+      resolve(result);
+    };
+
+    function handleMessage(event: MessageEvent) {
+      if (event.source !== iframe.contentWindow) return;
+      const data = event.data;
+      if (!data || data.source !== 'cogniguide-sandbox' || data.token !== token) return;
+
+      const result = data.result || {};
+      const logs: { level: string; args: string[] }[] = Array.isArray(result.logs) ? result.logs : [];
+
+      // Combine logs
+      const output = logs
+        .map((log) => `[${String(log.level).toUpperCase()}] ${(log.args || []).join(' ')}`)
+        .join('\n');
+
+      if (result.success) {
+        finish({
+          success: true,
+          output: output || 'Code executed successfully (no output)',
+          executionTime: Date.now() - startTime,
+        });
+      } else {
+        finish({
+          success: false,
+          error: `${result.error}\n\nStack: ${result.stack || 'N/A'}`,
+          output: output,
+          executionTime: Date.now() - startTime,
+        });
+      }
+    }
+
     // Timeout handler
     const timeoutId = setTimeout(() => {
-      cleanup();
-      resolve({
+      finish({
         success: false,
         error: `Execution timeout (${timeout}ms)`,
         executionTime: timeout,
       });
     }, timeout);
 
-    function cleanup() {
-      if (iframe.parentNode) {
-        document.body.removeChild(iframe);
-      }
-    }
-
-    iframe.onload = () => {
-      try {
-        const result = (iframe.contentWindow as any).__executionResult;
-
-        cleanup();
-        clearTimeout(timeoutId);
-
-        if (!result) {
-          resolve({
-            success: false,
-            error: 'No execution result',
-            executionTime: Date.now() - startTime,
-          });
-          return;
-        }
-
-        // Combine logs
-        const output = result.logs
-          .map((log: any) => `[${log.level.toUpperCase()}] ${log.args.join(' ')}`)
-          .join('\n');
-
-        if (result.success) {
-          resolve({
-            success: true,
-            output: output || 'Code executed successfully (no output)',
-            executionTime: Date.now() - startTime,
-          });
-        } else {
-          resolve({
-            success: false,
-            error: `${result.error}\n\nStack: ${result.stack || 'N/A'}`,
-            output: output,
-            executionTime: Date.now() - startTime,
-          });
-        }
-      } catch (error) {
-        cleanup();
-        clearTimeout(timeoutId);
-        resolve({
-          success: false,
-          error: `Execution error: ${(error as Error).message}`,
-          executionTime: Date.now() - startTime,
-        });
-      }
-    };
+    window.addEventListener('message', handleMessage);
 
     iframe.onerror = () => {
-      cleanup();
-      clearTimeout(timeoutId);
-      resolve({
+      finish({
         success: false,
         error: 'Failed to load execution environment',
         executionTime: Date.now() - startTime,

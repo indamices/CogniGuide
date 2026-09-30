@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# PWA dev build output (vite-plugin-pwa devOptions)
+dev-dist
+
+# Local environment variables
+.env
+.env.*
+!.env.example
